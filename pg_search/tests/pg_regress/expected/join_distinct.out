@@ -257,13 +257,13 @@ FROM dist_products p
 WHERE p.description ||| 'wireless'
 ORDER BY paradedb.score(p.id) DESC, p.name
     LIMIT 10;
-       name       |   score   
-------------------+-----------
- Keyboard         | 0.7199212
- Wireless Charger | 0.7199212
- Wireless Mouse   | 0.7199212
- Headphones       | 0.6763775
- Mouse Pad        | 0.6763775
+       name       |   score    
+------------------+------------
+ Keyboard         | 0.71992105
+ Wireless Charger | 0.71992105
+ Wireless Mouse   | 0.71992105
+ Headphones       |  0.6763775
+ Mouse Pad        |  0.6763775
 (5 rows)
 
 -- =============================================================================

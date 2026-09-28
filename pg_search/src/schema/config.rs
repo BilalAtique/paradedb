@@ -38,7 +38,10 @@ pub enum SearchFieldConfig {
         fast: bool,
         #[serde(default = "default_as_true")]
         fieldnorms: bool,
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[serde(
+            default = "default_as_true",
+            skip_serializing_if = "std::ops::Not::not"
+        )]
         pnorms: bool,
         #[serde(default)]
         tokenizer: SearchTokenizer,
@@ -185,6 +188,7 @@ impl SearchFieldConfig {
                 ref mut fast,
                 ref mut record,
                 ref mut fieldnorms,
+                ref mut pnorms,
                 ..
             } => {
                 #[allow(deprecated)]
@@ -205,6 +209,9 @@ impl SearchFieldConfig {
                     if value.get("fieldnorms").is_none() {
                         *fieldnorms = false;
                     }
+                }
+                if !*fieldnorms && value.get("pnorms").is_none() {
+                    *pnorms = false;
                 }
                 Ok(config)
             }
@@ -382,6 +389,7 @@ impl SearchFieldConfig {
             ref mut fast,
             ref mut record,
             ref mut fieldnorms,
+            ref mut pnorms,
             ..
         } = config
         {
@@ -389,6 +397,7 @@ impl SearchFieldConfig {
             *fast = true;
             *record = IndexRecordOption::Basic;
             *fieldnorms = false;
+            *pnorms = false;
         }
         config
     }

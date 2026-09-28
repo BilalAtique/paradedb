@@ -1171,7 +1171,7 @@ mod tests {
         Spi::run("INSERT INTO t (data) VALUES ('test');").unwrap();
         Spi::run(
             "CREATE INDEX t_idx ON t USING paradedb \
-             (id, data, (data::pdb.simple('alias=with_pnorms', 'pnorms=true')))",
+             (id, (data::pdb.simple('alias=data', 'pnorms=false')), (data::pdb.simple('alias=with_pnorms', 'pnorms=true')))",
         )
         .unwrap();
         let relation_oid: pg_sys::Oid =

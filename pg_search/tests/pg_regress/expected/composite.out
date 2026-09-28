@@ -1449,9 +1449,9 @@ SELECT id, name, pdb.score(id) as score
 FROM smoke_test
 WHERE id @@@ pdb.parse('description:shoes')
 ORDER BY score DESC, id;
- id |     name      |   score   
-----+---------------+-----------
-  1 | Running Shoes | 1.7731597
+ id |     name      |  score  
+----+---------------+---------
+  1 | Running Shoes | 1.77316
 (1 row)
 
 -- Score with multiple matches (tie-breaker on id)
@@ -1476,10 +1476,10 @@ SELECT id, name, pdb.score(id) as score
 FROM smoke_test
 WHERE id @@@ pdb.parse('description:shoes OR description:keyboard')
 ORDER BY score DESC, id;
- id |       name        |   score   
-----+-------------------+-----------
-  1 | Running Shoes     | 1.7731597
-  2 | Wireless Keyboard | 1.7731597
+ id |       name        |  score  
+----+-------------------+---------
+  1 | Running Shoes     | 1.77316
+  2 | Wireless Keyboard | 1.77316
 (2 rows)
 
 ------------------------------------------------------------
@@ -1604,10 +1604,10 @@ FROM smoke_test
 WHERE id @@@ pdb.parse('description:shoes OR description:keyboard')
 ORDER BY score DESC, id
 LIMIT 2;
- id |       name        |   score   
-----+-------------------+-----------
-  1 | Running Shoes     | 1.7731597
-  2 | Wireless Keyboard | 1.7731597
+ id |       name        |  score  
+----+-------------------+---------
+  1 | Running Shoes     | 1.77316
+  2 | Wireless Keyboard | 1.77316
 (2 rows)
 
 ------------------------------------------------------------
@@ -2539,7 +2539,7 @@ FROM smoke_test WHERE name @@@ pdb.term('wireless') OR description @@@ pdb.match
 ORDER BY score DESC, id LIMIT 2;
  id |       name        |   score   
 ----+-------------------+-----------
-  2 | Wireless Keyboard | 3.5649192
+  2 | Wireless Keyboard | 3.5649195
 (1 row)
 
 ------------------------------------------------------------

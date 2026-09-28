@@ -31,7 +31,7 @@ SELECT id, pdb.score(id) FROM bigint_test WHERE bigint_test @@@
 paradedb.term(field => 'value', value => 'blue') ORDER BY pdb.score(id) DESC;
  id |   score    
 ----+------------
-  3 | 0.61846066
+  3 |  0.6184606
   2 | 0.57459813
   1 | 0.53654534
   9 | 0.50321954
@@ -48,7 +48,7 @@ paradedb.term(field => 'value', value => 'blue') ORDER BY id;
 ----+------------
   1 | 0.53654534
   2 | 0.57459813
-  3 | 0.61846066
+  3 |  0.6184606
   4 | 0.44761515
   5 | 0.47379148
   9 | 0.50321954
@@ -66,7 +66,7 @@ ORDER BY id;
   1 | <b>blue</b>tooth         | 0.53654534
   1 | blue<b>tooth</b>         |   3.022081
   2 | <b>blue</b>bell          | 0.57459813
-  3 | jet<b>blue</b>           | 0.61846066
+  3 | jet<b>blue</b>           |  0.6184606
   4 | <b>blue</b>&#x27;s clues | 0.44761515
   5 | <b>blue</b> bloods       | 0.47379148
   7 | yellow<b>tooth</b>       |   2.668621
@@ -98,7 +98,7 @@ SELECT CAST(id AS TEXT), pdb.score(id) FROM uuid_test WHERE uuid_test @@@
 paradedb.term(field => 'value', value => 'blue') ORDER BY pdb.score(id) DESC;
                   id                  |   score    
 --------------------------------------+------------
- b5faacc0-9eba-441a-81f8-820b46a3b57e | 0.61846066
+ b5faacc0-9eba-441a-81f8-820b46a3b57e |  0.6184606
  38bf27a0-1aa8-42cd-9cb0-993025e0b8d0 | 0.57459813
  f159c89e-2162-48cd-85e3-e42b71d2ecd0 | 0.53654534
  40bc9216-66d0-4ae8-87ee-ddb02e3e1b33 | 0.50321954
@@ -115,7 +115,7 @@ paradedb.term(field => 'value', value => 'blue') ORDER BY id;
 --------------------------------------+------------
  38bf27a0-1aa8-42cd-9cb0-993025e0b8d0 | 0.57459813
  40bc9216-66d0-4ae8-87ee-ddb02e3e1b33 | 0.50321954
- b5faacc0-9eba-441a-81f8-820b46a3b57e | 0.61846066
+ b5faacc0-9eba-441a-81f8-820b46a3b57e |  0.6184606
  ea1181a0-5d3e-4f5f-a6ab-b1354ffc91ad | 0.47379148
  eb833eb6-c598-4042-b84a-0045828fceea | 0.44761515
  f159c89e-2162-48cd-85e3-e42b71d2ecd0 | 0.53654534
@@ -165,7 +165,7 @@ SELECT CAST(id AS TEXT), pdb.score(id) FROM timestamp_test WHERE timestamp_test 
 paradedb.term(field => 'value', value => 'blue') ORDER BY pdb.score(id) DESC;
               id              |   score    
 ------------------------------+------------
- Fri May 05 10:11:12 2023 PDT | 0.61846066
+ Fri May 05 10:11:12 2023 PDT |  0.6184606
  Thu May 04 10:10:11 2023 PDT | 0.57459813
  Wed May 03 06:09:10 2023 PDT | 0.53654534
  Thu May 11 14:17:18 2023 PDT | 0.50321954
@@ -180,7 +180,7 @@ SELECT CAST(id AS TEXT), pdb.score(id) FROM timestamp_test WHERE timestamp_test 
 paradedb.term(field => 'value', value => 'blue') ORDER BY id;
               id              |   score    
 ------------------------------+------------
- Fri May 05 10:11:12 2023 PDT | 0.61846066
+ Fri May 05 10:11:12 2023 PDT |  0.6184606
  Sat May 06 10:12:13 2023 PDT | 0.44761515
  Sun May 07 10:13:14 2023 PDT | 0.47379148
  Thu May 04 10:10:11 2023 PDT | 0.57459813

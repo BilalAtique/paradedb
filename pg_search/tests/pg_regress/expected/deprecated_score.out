@@ -62,7 +62,7 @@ WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a,
        1 | Sami Bowling    |            1 | 0.35745716
        2 | Stephen King    |            1 | 0.36441684
        3 | J.K. Rowling    |     2.540445 |  0.4624617
-       4 | Agatha Christie |            1 | 0.20612015
+       4 | Agatha Christie |            1 |  0.2027706
 (6 rows)
 
 -- For comparison, show a working case where predicates can be pushed down
@@ -92,7 +92,7 @@ ORDER BY b.id;
        1 | 0.35745716
        2 | 0.36441684
        3 |  0.4624617
-       4 | 0.20612015
+       4 |  0.2027706
 (5 rows)
 
 -- Test case with only join predicate - should show the issue more clearly
@@ -222,7 +222,7 @@ WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a,
        1 | Sami Bowling    |            1 | 0.35745716
        2 | Stephen King    |            1 | 0.36441684
        3 | J.K. Rowling    |     2.540445 |  0.4624617
-       4 | Agatha Christie |            1 | 0.20612015
+       4 | Agatha Christie |            1 |  0.2027706
 (6 rows)
 
 -- RIGHT JOIN case
@@ -294,7 +294,7 @@ WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a,
        1 | Sami Bowling    |            1 |                     | 0.35745716 | This is a final <b>test</b> of the snippet function with multiple final words
        2 | Stephen King    |            1 |                     | 0.36441684 | Another <b>test</b> of the snippet snippet function with repeated snippet words
        3 | J.K. Rowling    |     2.540445 | J.K. <b>Rowling</b> |  0.4624617 | Yet another <b>test</b> <b>test</b> <b>test</b> of the function function function
-       4 | Agatha Christie |            1 |                     | 0.20612015 | <b>test</b> Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+       4 | Agatha Christie |            1 |                     |  0.2027706 | <b>test</b> Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
 (6 rows)
 
 -- Test LEFT JOIN behavior

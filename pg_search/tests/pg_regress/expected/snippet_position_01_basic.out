@@ -46,7 +46,7 @@ ORDER BY score DESC
 LIMIT 5;
  id |                                                                     content_snippet                                                                      | content_snippet_positions |          titles_snippet          | titles_snippet_positions |   score    
 ----+----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------+----------------------------------+--------------------------+------------
-  4 | test Lorem <b>ipsum</b> dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim | {{11,16},{860,865}}       | <b>test</b> snippet function     | {{0,4}}                  |  1.0748948
+  4 | test Lorem <b>ipsum</b> dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim | {{11,16},{860,865}}       | <b>test</b> snippet function     | {{0,4}}                  |  1.0589662
   2 |                                                                                                                                                          |                           | <b>test</b> <b>test</b> function | {{0,4},{5,9}}            | 0.14487077
   3 |                                                                                                                                                          |                           | <b>test</b> snippet <b>test</b>  | {{0,4},{13,17}}          | 0.14487077
   1 |                                                                                                                                                          |                           | <b>test</b> snippet function     | {{0,4}}                  | 0.10536056
@@ -62,7 +62,7 @@ LIMIT 5;
   1 |                                                                                                                                                          |                           | <b>test</b> snippet function     | {{0,4}}                  | 0.10536056
   2 |                                                                                                                                                          |                           | <b>test</b> <b>test</b> function | {{0,4},{5,9}}            | 0.14487077
   3 |                                                                                                                                                          |                           | <b>test</b> snippet <b>test</b>  | {{0,4},{13,17}}          | 0.14487077
-  4 | test Lorem <b>ipsum</b> dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim | {{11,16},{860,865}}       | <b>test</b> snippet function     | {{0,4}}                  |  1.0748948
+  4 | test Lorem <b>ipsum</b> dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim | {{11,16},{860,865}}       | <b>test</b> snippet function     | {{0,4}}                  |  1.0589662
 (4 rows)
 
 -- Test accessing array elements: [i][1] for start, [i][2] for end

@@ -133,10 +133,10 @@ ORDER BY a.id, b.id, author_score DESC, book_score DESC;
 WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a, b)
   author_name  |     book_title      | author_score | book_score 
 ---------------+---------------------+--------------+------------
- J.K. Rowling  | Harry Potter Magic  |            0 |    0.98641
+ J.K. Rowling  | Harry Potter Magic  |            0 |  0.9864101
  George Orwell | Dystopian Future    |            0 |  1.0376933
- John Smith    | Smartphone Tech     |    1.6503524 |  1.1581132
- John Smith    | Future Technologies |    1.6503524 |          0
+ John Smith    | Smartphone Tech     |    1.6503521 |  1.1581132
+ John Smith    | Future Technologies |    1.6503521 |          0
 (4 rows)
 
 -- Test 1.2: LEFT JOIN with equi-join condition
@@ -172,8 +172,8 @@ WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a,
  Stephen King | Harry Potter Horrors |   0.66167223 |  1.3702781
  Stephen King | The Shining Terror   |   0.66167223 |          0
  Jane Austen  | Pride Romance        |   0.66167223 |          0
- John Smith   | Smartphone Tech      |   0.74260163 |          0
- John Smith   | Future Technologies  |   0.74260163 |          0
+ John Smith   | Smartphone Tech      |    0.7426016 |          0
+ John Smith   | Future Technologies  |    0.7426016 |          0
 (6 rows)
 
 -- Test 1.4: Multiple equi-join conditions with AND
@@ -245,12 +245,12 @@ WARNING:  JoinScan not used: outer-join ON residual predicates are not supported
  Jane Austen  | Magic Detective      |   0.66167223 |          0
  Jane Austen  | Smartphone Tech      |   0.66167223 |          0
  Jane Austen  | Future Technologies  |   0.66167223 |          0
- John Smith   | Harry Potter Magic   |   0.74260163 |          0
- John Smith   | Harry Potter Horrors |   0.74260163 |          0
- John Smith   | The Shining Terror   |   0.74260163 |          0
- John Smith   | Magic Detective      |   0.74260163 |          0
- John Smith   | Smartphone Tech      |   0.74260163 |          0
- John Smith   | Future Technologies  |   0.74260163 |          0
+ John Smith   | Harry Potter Magic   |    0.7426016 |          0
+ John Smith   | Harry Potter Horrors |    0.7426016 |          0
+ John Smith   | The Shining Terror   |    0.7426016 |          0
+ John Smith   | Magic Detective      |    0.7426016 |          0
+ John Smith   | Smartphone Tech      |    0.7426016 |          0
+ John Smith   | Future Technologies  |    0.7426016 |          0
 (22 rows)
 
 -- Test 2.3: INNER JOIN with complex non-equi condition
@@ -268,9 +268,9 @@ WARNING:  JoinScan not used: outer-join ON residual predicates are not supported
 -----------------+---------------------+--------------+------------
  Agatha Christie | Murder Mystery Case |    1.0395092 |          0
  Agatha Christie | Pride Romance       |    1.0395092 |          0
- George Orwell   | Murder Mystery Case |    1.1030805 |          0
- George Orwell   | Dystopian Future    |    1.1030805 |          0
- George Orwell   | Pride Romance       |    1.1030805 |          0
+ George Orwell   | Murder Mystery Case |    1.1030804 |          0
+ George Orwell   | Dystopian Future    |    1.1030804 |          0
+ George Orwell   | Pride Romance       |    1.1030804 |          0
 (5 rows)
 
 -- Test 2.4: INNER JOIN with BETWEEN condition (range, non-equi)
@@ -389,8 +389,8 @@ WARNING:  JoinScan not used: predicate cannot be pushed into the scan (tables: a
  Stephen King    | Harry Potter Horrors |            0 |          0
  Agatha Christie | Murder Mystery Case  |            0 |  1.3702781
  Jane Austen     | Pride Romance        |            0 |          0
- John Smith      | Smartphone Tech      |    1.6503524 |          0
- John Smith      | Future Technologies  |    1.6503524 |          0
+ John Smith      | Smartphone Tech      |    1.6503521 |          0
+ John Smith      | Future Technologies  |    1.6503521 |          0
 (7 rows)
 
 -- Test 4.2: Nested AND/OR combinations
@@ -409,8 +409,8 @@ WARNING:  JoinScan not used: predicate cannot be pushed into the scan (tables: a
 --------------+----------------------+--------------+------------
  J.K. Rowling | Harry Potter Magic   |            0 |  1.3025584
  Stephen King | Harry Potter Horrors |            0 |  1.3702781
- John Smith   | Smartphone Tech      |    1.6503524 |          0
- John Smith   | Future Technologies  |    1.6503524 |          0
+ John Smith   | Smartphone Tech      |    1.6503521 |          0
+ John Smith   | Future Technologies  |    1.6503521 |          0
 (4 rows)
 
 -- Test 4.3: Complex boolean logic across three tables
@@ -497,8 +497,8 @@ WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a,
  Agatha Christie | Murder Mystery Case  |            0 | 0.28435844
  George Orwell   | Dystopian Future     |            0 | 0.28435844
  Jane Austen     | Pride Romance        |            0 | 0.28435844
- John Smith      | Smartphone Tech      |   0.74260163 |          0
- John Smith      | Future Technologies  |   0.74260163 |          0
+ John Smith      | Smartphone Tech      |    0.7426016 |          0
+ John Smith      | Future Technologies  |    0.7426016 |          0
 (9 rows)
 
 -- Test 5.4: NULL-generating join test
@@ -523,8 +523,8 @@ WARNING:  JoinScan not used: join conditions must reference columnar indexed fie
  J.K. Rowling | Magic Detective      | Mystery       |   0.66167223 | 0.27030534 |              0
  Stephen King | Harry Potter Horrors | Fantasy       |   0.66167223 | 0.28435844 |      1.5404451
  Stephen King | The Shining Terror   | Horror        |   0.66167223 | 0.28435844 |              0
- John Smith   | Smartphone Tech      | Technology    |   0.74260163 |          0 |              0
- John Smith   | Future Technologies  | Technology    |   0.74260163 |          0 |              0
+ John Smith   | Smartphone Tech      | Technology    |    0.7426016 |          0 |              0
+ John Smith   | Future Technologies  | Technology    |    0.7426016 |          0 |              0
 (6 rows)
 
 -- Test 5.5: Complex join forcing joininfo conditions
@@ -555,7 +555,7 @@ ORDER BY a.id, author_score DESC;
 --------------+--------------
  J.K. Rowling |   0.66167223
  Stephen King |   0.66167223
- John Smith   |   0.74260163
+ John Smith   |    0.7426016
 (3 rows)
 
 SELECT 
@@ -572,8 +572,8 @@ WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a,
  J.K. Rowling |   0.66167223
  Stephen King |   0.66167223
  Stephen King |   0.66167223
- John Smith   |   0.74260163
- John Smith   |   0.74260163
+ John Smith   |    0.7426016
+ John Smith   |    0.7426016
 (6 rows)
 
 -- Test 6.2: Performance vs correctness trade-off
@@ -588,7 +588,7 @@ WHERE (a.bio ||| 'author' OR b.content ||| 'story')
 WARNING:  Aggregate Scan (DataFusion) not used: join predicates must reference columnar indexed fields (table: join)
  total_results |  avg_author_score  |   avg_book_score   
 ---------------+--------------------+--------------------
-             8 | 0.5164865255355835 | 0.2097555547952652
+             8 | 0.5164865106344223 | 0.2097555547952652
 (1 row)
 
 -- Test 6.3: Unsafe conditions that cannot be pushed down
@@ -605,11 +605,11 @@ LIMIT 5;
 WARNING:  JoinScan not used: predicate cannot be pushed into the scan (tables: a, b)
  author_name |      book_title      | author_score | book_score 
 -------------+----------------------+--------------+------------
- John Smith  | Harry Potter Magic   |    1.6503524 |          0
- John Smith  | Harry Potter Horrors |    1.6503524 |          0
- John Smith  | The Shining Terror   |    1.6503524 |          0
- John Smith  | Murder Mystery Case  |    1.6503524 |          0
- John Smith  | Dystopian Future     |    1.6503524 |          0
+ John Smith  | Harry Potter Magic   |    1.6503521 |          0
+ John Smith  | Harry Potter Horrors |    1.6503521 |          0
+ John Smith  | The Shining Terror   |    1.6503521 |          0
+ John Smith  | Murder Mystery Case  |    1.6503521 |          0
+ John Smith  | Dystopian Future     |    1.6503521 |          0
 (5 rows)
 
 -- =============================================================================
@@ -661,8 +661,8 @@ ORDER BY a.id, c.id, author_score DESC, category_score DESC;
 WARNING:  JoinScan not used: LIMIT is required for top-level queries (tables: a, b, c)
  author_name | category_name | author_score | category_score 
 -------------+---------------+--------------+----------------
- John Smith  | Technology    |    1.6503524 |              0
- John Smith  | Technology    |    1.6503524 |              0
+ John Smith  | Technology    |    1.6503521 |              0
+ John Smith  | Technology    |    1.6503521 |              0
 (2 rows)
 
 -- =============================================================================
@@ -681,7 +681,7 @@ WHERE b.content ||| 'performance'
 ORDER BY score DESC;
           query_type          |        name         |   score   
 ------------------------------+---------------------+-----------
- Single table A - smartphone  | John Smith          | 1.6503524
+ Single table A - smartphone  | John Smith          | 1.6503521
  Single table B - performance | Future Technologies | 1.5292932
  Single table B - performance | The Shining Terror  | 1.3702781
 (3 rows)
@@ -713,9 +713,9 @@ WARNING:  JoinScan not used: join conditions must reference columnar indexed fie
  J.K. Rowling  | Magic Detective      | Mystery       | Magic Books          |            0 |  1.4976931 |              0 |               0
  Stephen King  | Harry Potter Horrors | Fantasy       | Magic Books          |            0 |          0 |      1.5404451 |               0
  Stephen King  | The Shining Terror   | Horror        | Academic Press       |            0 |  1.3702781 |              0 |       1.4398423
- George Orwell | Dystopian Future     | Classic       | Academic Press       |    1.1030805 |          0 |              0 |       1.4398423
- John Smith    | Smartphone Tech      | Technology    | TechBooks Publishing |    1.1030805 |          0 |      1.5904956 |       1.4048332
- John Smith    | Future Technologies  | Technology    | TechBooks Publishing |    1.1030805 |  1.5292932 |      1.5904956 |       1.4048332
+ George Orwell | Dystopian Future     | Classic       | Academic Press       |    1.1030804 |          0 |              0 |       1.4398423
+ John Smith    | Smartphone Tech      | Technology    | TechBooks Publishing |    1.1030804 |          0 |      1.5904956 |       1.4048332
+ John Smith    | Future Technologies  | Technology    | TechBooks Publishing |    1.1030804 |  1.5292932 |      1.5904956 |       1.4048332
 (7 rows)
 
 -- Cleanup

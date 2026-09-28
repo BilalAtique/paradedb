@@ -110,7 +110,7 @@ ORDER BY tbl, score DESC, id ASC;
  documents | doc-1  | postgres |  0.5231233
  documents | doc-2  | postgres |  0.5062484
  documents | doc-3  | postgres | 0.41299206
- files     | file-1 | index    | 0.33802766
+ files     | file-1 | index    | 0.33802772
  files     | file-3 | index    | 0.32759193
  files     | file-2 | index    |  0.2647028
  files     | file-4 | index    |  0.2647028
@@ -136,7 +136,7 @@ ORDER BY tbl, score DESC, id ASC;
     tbl    |   id   | query  |   score    
 -----------+--------+--------+------------
  documents | doc-1  | search |  1.0594962
- files     | file-1 | search |  1.2511479
+ files     | file-1 | search |  1.2511481
  pages     | page-3 | search |  0.7879951
  pages     | page-4 | search |  0.7879951
  pages     | page-1 | search | 0.71042687
@@ -219,9 +219,9 @@ ORDER BY score DESC
 LIMIT 10;
  doc_id | file_id | page_id | doc_score  | file_score | page_score |   score   
 --------+---------+---------+------------+------------+------------+-----------
- doc-1  | file-1  | page-1  |  0.5231233 | 0.33802766 |  0.3005307 | 1.1616817
+ doc-1  | file-1  | page-1  |  0.5231233 | 0.33802772 |  0.3005307 | 1.1616818
  doc-2  | file-3  | page-4  |  0.5062484 | 0.32759193 | 0.27618298 | 1.1100234
- doc-1  | file-1  | page-2  |  0.5231233 | 0.33802766 | 0.22218224 | 1.0833333
+ doc-1  | file-1  | page-2  |  0.5231233 | 0.33802772 | 0.22218224 | 1.0833333
  doc-1  | file-2  | page-3  |  0.5231233 |  0.2647028 | 0.27618298 | 1.0640091
  doc-2  | file-4  | page-5  |  0.5062484 |  0.2647028 | 0.22218224 | 0.9931334
  doc-3  | file-5  | page-6  | 0.41299206 |  0.2647028 | 0.22218224 | 0.8998771
@@ -280,7 +280,7 @@ ORDER BY score DESC
 LIMIT 10;
  doc_id | file_id | doc_score  | file_score |   score    
 --------+---------+------------+------------+------------
- doc-1  | file-1  |  0.5231233 | 0.33802766 |   0.861151
+ doc-1  | file-1  |  0.5231233 | 0.33802772 | 0.86115104
  doc-2  | file-3  |  0.5062484 | 0.32759193 | 0.83384037
  doc-1  | file-2  |  0.5231233 |  0.2647028 |  0.7878261
  doc-2  | file-4  |  0.5062484 |  0.2647028 |  0.7709512
@@ -342,7 +342,7 @@ ORDER BY pdb_score DESC, pages.id ASC
 LIMIT 10;
  doc_id | file_id | page_id | pdb_score 
 --------+---------+---------+-----------
- doc-1  | file-1  | page-1  | 1.1616817
+ doc-1  | file-1  | page-1  | 1.1616818
  doc-2  | file-3  | page-4  | 1.1100234
  doc-1  | file-1  | page-2  | 1.0833333
  doc-1  | file-2  | page-3  | 1.0640091
@@ -416,8 +416,8 @@ ORDER BY score DESC, documents.id ASC, files.id ASC, pages.id ASC
 LIMIT 10;
  doc_id | file_id | page_id | doc_score | file_score | page_score |   score   
 --------+---------+---------+-----------+------------+------------+-----------
- doc-1  | file-1  | page-1  | 1.0594962 |  1.2511479 | 0.71042687 |  3.021071
- doc-1  | file-1  | page-2  | 1.0594962 |  1.2511479 |          0 | 2.3106441
+ doc-1  | file-1  | page-1  | 1.0594962 |  1.2511481 | 0.71042687 |  3.021071
+ doc-1  | file-1  | page-2  | 1.0594962 |  1.2511481 |          0 | 2.3106441
  doc-1  | file-2  | page-3  | 1.0594962 |          0 |  0.7879951 | 1.8474913
  doc-2  | file-3  | page-4  |         0 |          0 |  0.7879951 | 0.7879951
 (4 rows)
@@ -544,8 +544,8 @@ ORDER BY score DESC, documents.id ASC, files.id ASC, pages.id ASC
 LIMIT 10;
  doc_id | file_id | page_id | doc_score | file_score | page_score |   score   
 --------+---------+---------+-----------+------------+------------+-----------
- doc-1  | file-1  | page-1  | 0.5231233 |  1.2511479 | 0.71042687 |  2.484698
- doc-1  | file-1  | page-2  | 0.5231233 |  1.2511479 |          0 | 1.7742712
+ doc-1  | file-1  | page-1  | 0.5231233 |  1.2511481 | 0.71042687 | 2.4846983
+ doc-1  | file-1  | page-2  | 0.5231233 |  1.2511481 |          0 | 1.7742715
  doc-1  | file-2  | page-3  | 0.5231233 |          0 |  0.7879951 | 1.3111184
  doc-2  | file-3  | page-4  | 0.5062484 |          0 |  0.7879951 | 1.2942436
 (4 rows)
@@ -676,8 +676,8 @@ ORDER BY score DESC, documents.id ASC, files.id ASC, pages.id ASC
 LIMIT 10;
  doc_id | file_id | page_id | doc_score  | file_score | page_score |   score   
 --------+---------+---------+------------+------------+------------+-----------
- doc-1  | file-1  | page-1  |  1.5826194 | 0.33802766 |  0.3005307 | 2.2211778
- doc-1  | file-1  | page-2  |  1.5826194 | 0.33802766 | 0.22218224 | 2.1428294
+ doc-1  | file-1  | page-1  |  1.5826194 | 0.33802772 |  0.3005307 | 2.2211778
+ doc-1  | file-1  | page-2  |  1.5826194 | 0.33802772 | 0.22218224 | 2.1428294
  doc-1  | file-2  | page-3  |  1.5826194 |  0.2647028 | 0.27618298 |  2.123505
  doc-2  | file-3  | page-4  |  0.5062484 | 0.32759193 | 0.27618298 | 1.1100234
  doc-2  | file-4  | page-5  |  0.5062484 |  0.2647028 | 0.22218224 | 0.9931334

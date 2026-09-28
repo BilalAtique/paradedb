@@ -289,14 +289,14 @@ LIMIT 10;
 ----------+-------------+--------
  Post 1   | 0.019852143 |      2
  Post 10  | 0.018565284 |      1
- Post 100 | 0.011464216 |      1
+ Post 100 | 0.011263829 |      1
  Post 11  | 0.018432524 |      2
  Post 12  |  0.01830165 |      3
  Post 13  | 0.018172622 |      4
  Post 14  | 0.018045401 |      5
  Post 15  | 0.017919946 |      1
  Post 16  | 0.017796224 |      2
- Post 17  | 0.017796224 |      3
+ Post 17  |   0.0176742 |      3
 (10 rows)
 
 -- Test 2: Score function with mixed field types in selection
@@ -329,7 +329,7 @@ LIMIT 5;
  Advanced Science Research | Author Expert |      5 |  8888 | 0.022842946
  Post 1                    | Author 2      |      2 |   100 | 0.019852143
  Post 10                   | Author 1      |      1 |  1000 | 0.018565284
- Post 100                  | Author 1      |      1 | 10000 | 0.011464216
+ Post 100                  | Author 1      |      1 | 10000 | 0.011263829
  Post 11                   | Author 2      |      2 |  1100 | 0.018432524
 (5 rows)
 
@@ -360,10 +360,10 @@ ORDER BY title, author, pdb.score(id) DESC;
 ----------------------------+---------------+-----------
  Post 14                    | Author 5      | 2.8002355
  Post 28                    | Author 4      | 2.7986248
- Post 49                    | Author 5      |  2.796766
- Post 63                    | Author 4      | 2.7958398
- Post 84                    | Author 5      | 2.7945325
- Post 98                    | Author 4      | 2.7936542
+ Post 49                    | Author 5      |  2.796684
+ Post 63                    | Author 4      | 2.7956264
+ Post 84                    | Author 5      | 2.7943006
+ Post 98                    | Author 4      |  2.793553
  Special Technology Post    | Author Expert | 2.8048325
  Technology Trends Analysis | Author Expert | 2.8048325
 (8 rows)
@@ -409,11 +409,11 @@ LIMIT 10;
  Post 13                   | Author 4      |      4 | 1.0609937
  Post 14                   | Author 5      |      5 | 1.0605667
  Post 18                   | Author 4      |      4 | 1.0589168
- Post 19                   | Author 5      |      5 | 1.0589168
- Post 23                   | Author 4      |      4 | 1.0573545
+ Post 19                   | Author 5      |      5 | 1.0585183
+ Post 23                   | Author 4      |      4 | 1.0569767
  Post 24                   | Author 5      |      5 | 1.0566039
  Post 28                   | Author 4      |      4 | 1.0551603
- Post 29                   | Author 5      |      5 | 1.0551603
+ Post 29                   | Author 5      |      5 | 1.0548109
  Post 3                    | Author 4      |      4 |   1.06562
 (10 rows)
 
@@ -453,43 +453,43 @@ ORDER BY sp.title, sp.author, sp.relevance DESC;
  Post 13                    | Author 4      | 1.0181726
  Post 14                    | Author 5      | 1.0180454
  Post 18                    | Author 4      | 1.0175538
- Post 19                    | Author 5      | 1.0175538
- Post 23                    | Author 4      | 1.0170883
+ Post 19                    | Author 5      | 1.0174351
+ Post 23                    | Author 4      | 1.0169758
  Post 24                    | Author 5      | 1.0168648
  Post 28                    | Author 4      | 1.0164347
- Post 29                    | Author 5      | 1.0164347
+ Post 29                    | Author 5      | 1.0163305
  Post 3                     | Author 4      |  1.019551
- Post 33                    | Author 4      | 1.0160259
- Post 34                    | Author 5      | 1.0160259
- Post 38                    | Author 4      |  1.015637
- Post 39                    | Author 5      |  1.015637
+ Post 33                    | Author 4      | 1.0159268
+ Post 34                    | Author 5      | 1.0158291
+ Post 38                    | Author 4      | 1.0154495
+ Post 39                    | Author 5      | 1.0153575
  Post 4                     | Author 5      | 1.0194038
- Post 43                    | Author 4      | 1.0152665
+ Post 43                    | Author 4      | 1.0150001
  Post 44                    | Author 5      | 1.0149133
  Post 48                    | Author 4      |  1.014576
- Post 49                    | Author 5      |  1.014576
- Post 53                    | Author 4      | 1.0142535
- Post 54                    | Author 5      | 1.0142535
- Post 58                    | Author 4      | 1.0139451
- Post 59                    | Author 5      | 1.0139451
- Post 63                    | Author 4      | 1.0136497
+ Post 49                    | Author 5      |  1.014494
+ Post 53                    | Author 4      | 1.0141752
+ Post 54                    | Author 5      | 1.0140976
+ Post 58                    | Author 4      | 1.0137959
+ Post 59                    | Author 5      | 1.0137224
+ Post 63                    | Author 4      | 1.0134362
  Post 64                    | Author 5      | 1.0133666
- Post 68                    | Author 4      | 1.0133666
- Post 69                    | Author 5      | 1.0133666
- Post 73                    | Author 4      | 1.0128342
- Post 74                    | Author 5      | 1.0128342
- Post 78                    | Author 4      | 1.0128342
- Post 79                    | Author 5      | 1.0128342
+ Post 68                    | Author 4      | 1.0130949
+ Post 69                    | Author 5      | 1.0130287
+ Post 73                    | Author 4      | 1.0127705
+ Post 74                    | Author 5      | 1.0127076
+ Post 78                    | Author 4      | 1.0124619
+ Post 79                    | Author 5      | 1.0124019
  Post 8                     | Author 4      | 1.0188366
- Post 83                    | Author 4      | 1.0123426
- Post 84                    | Author 5      | 1.0123426
+ Post 83                    | Author 4      | 1.0121677
+ Post 84                    | Author 5      | 1.0121106
  Post 88                    | Author 4      | 1.0118872
- Post 89                    | Author 5      | 1.0118872
+ Post 89                    | Author 5      | 1.0118326
  Post 9                     | Author 5      |    1.0187
- Post 93                    | Author 4      | 1.0118872
- Post 94                    | Author 5      | 1.0118872
- Post 98                    | Author 4      | 1.0114642
- Post 99                    | Author 5      | 1.0114642
+ Post 93                    | Author 4      | 1.0116192
+ Post 94                    | Author 5      | 1.0115671
+ Post 98                    | Author 4      | 1.0113631
+ Post 99                    | Author 5      | 1.0113133
  Special Technology Post    | Author Expert | 1.0226423
  Technology Trends Analysis | Author Expert | 1.0226423
 (42 rows)
@@ -542,8 +542,8 @@ LIMIT 10;
  Post 1   | Author 2 | 0.019852143
  Post 10  | Author 1 |  0.04374626
  Post 10  | Author 1 | 0.018565284
- Post 100 | Author 1 | 0.027013674
- Post 100 | Author 1 | 0.011464216
+ Post 100 | Author 1 | 0.026541494
+ Post 100 | Author 1 | 0.011263829
  Post 11  | Author 2 |  0.04343343
  Post 11  | Author 2 | 0.018432524
  Post 12  | Author 3 |  0.04312505
@@ -749,25 +749,25 @@ ORDER BY title, author, relevance DESC;
           title          |    author     | rating | relevance 
 -------------------------+---------------+--------+-----------
  Post 14                 | Author 5      |      5 | 1.0180454
- Post 19                 | Author 5      |      5 | 1.0175538
+ Post 19                 | Author 5      |      5 | 1.0174351
  Post 24                 | Author 5      |      5 | 1.0168648
- Post 29                 | Author 5      |      5 | 1.0164347
- Post 34                 | Author 5      |      5 | 1.0160259
- Post 39                 | Author 5      |      5 |  1.015637
+ Post 29                 | Author 5      |      5 | 1.0163305
+ Post 34                 | Author 5      |      5 | 1.0158291
+ Post 39                 | Author 5      |      5 | 1.0153575
  Post 4                  | Author 5      |      5 | 1.0194038
  Post 44                 | Author 5      |      5 | 1.0149133
- Post 49                 | Author 5      |      5 |  1.014576
- Post 54                 | Author 5      |      5 | 1.0142535
- Post 59                 | Author 5      |      5 | 1.0139451
+ Post 49                 | Author 5      |      5 |  1.014494
+ Post 54                 | Author 5      |      5 | 1.0140976
+ Post 59                 | Author 5      |      5 | 1.0137224
  Post 64                 | Author 5      |      5 | 1.0133666
- Post 69                 | Author 5      |      5 | 1.0133666
- Post 74                 | Author 5      |      5 | 1.0128342
- Post 79                 | Author 5      |      5 | 1.0128342
- Post 84                 | Author 5      |      5 | 1.0123426
- Post 89                 | Author 5      |      5 | 1.0118872
+ Post 69                 | Author 5      |      5 | 1.0130287
+ Post 74                 | Author 5      |      5 | 1.0127076
+ Post 79                 | Author 5      |      5 | 1.0124019
+ Post 84                 | Author 5      |      5 | 1.0121106
+ Post 89                 | Author 5      |      5 | 1.0118326
  Post 9                  | Author 5      |      5 |    1.0187
- Post 94                 | Author 5      |      5 | 1.0118872
- Post 99                 | Author 5      |      5 | 1.0114642
+ Post 94                 | Author 5      |      5 | 1.0115671
+ Post 99                 | Author 5      |      5 | 1.0113133
  Special Technology Post | Author Expert |      5 | 1.0226423
 (21 rows)
 
