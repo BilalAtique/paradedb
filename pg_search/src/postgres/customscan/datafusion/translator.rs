@@ -27,9 +27,9 @@ use pgrx::pg_sys;
 
 use crate::postgres::customscan::joinscan::build::{
     JoinLevelExpr, JoinNode, JoinSource, JoinType as PgJoinType, LateralUnnestInfo, RelNode,
-    RelationAlias, UnnestNode,
+    RelationAlias, ScoreColumn, UnnestNode,
 };
-use crate::postgres::customscan::joinscan::privdat::{OutputColumnInfo, SCORE_COL_NAME};
+use crate::postgres::customscan::joinscan::privdat::OutputColumnInfo;
 use crate::scan::ScanMode;
 
 pub trait ColumnMapper {
@@ -307,13 +307,7 @@ impl<'a> PredicateTranslator<'a> {
             crate::postgres::customscan::joinscan::planning::get_score_func_rti(node.cast())
         {
             for source in self.sources.iter() {
-                if let Some(attno) = source.map_var(rti, 0) {
-                    if let Some(name) = source.column_name(attno) {
-                        return Some(make_source_col(source, &name));
-                    } else {
-                        return Some(make_source_score_col(source));
-                    }
-                } else if source.contains_rti(rti) {
+                if source.contains_rti(rti) {
                     return Some(make_source_score_col(source));
                 }
             }
@@ -772,9 +766,11 @@ pub fn make_source_col(source: &JoinSource, field_name: &str) -> Expr {
 }
 
 /// Build a DataFusion column expression for the synthetic score column on the
-/// given source. Equivalent to `make_source_col(source, SCORE_COL_NAME)`.
+/// given source. Uses `ScoreColumn::new(source.display_alias())` to produce
+/// a column named `pdb.score({table})`.
 pub fn make_source_score_col(source: &JoinSource) -> Expr {
-    make_source_col(source, SCORE_COL_NAME)
+    let score_name = ScoreColumn::new(source.display_alias()).to_string();
+    make_source_col(source, &score_name)
 }
 
 /// Build a DataFusion column expression for an unnested field on the given
@@ -828,11 +824,6 @@ impl<'a> ColumnMapper for CombinedMapper<'a> {
 
         if let Some(source) = self.sources.iter().find(|s| s.contains_rti(rti)) {
             if is_score {
-                if let Some(col_idx) = source.map_var(rti, 0)
-                    && let Some(name) = source.column_name(col_idx)
-                {
-                    return Some(make_source_col(source, &name));
-                }
                 return Some(make_source_score_col(source));
             }
 
