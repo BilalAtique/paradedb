@@ -1104,7 +1104,7 @@ pub mod mvcc_collector {
     use std::sync::Arc;
     use tantivy::collector::{Collector, SegmentCollector};
 
-    use crate::postgres::heap::VisibilityChecker;
+    use crate::postgres::heap::{VisibilityChecker, VisibilityMask};
     use tantivy::{DocId, Score, SegmentOrdinal, SegmentReader};
 
     use super::COLLECTOR_BATCH_SIZE as BATCH_SIZE;
@@ -1198,49 +1198,51 @@ pub mod mvcc_collector {
                 .as_ref()
                 .expect("buffered docs need visibility checks")
                 .lock();
-            self.visibility_buffer.resize(self.doc_buffer.len(), false);
-            let all_visible = vischeck.check_segment_docs_mask(
+            let mask = vischeck.check_segment_docs_mask(
                 self.segment_ord,
                 &self.doc_buffer,
                 &mut self.visibility_buffer,
             );
             drop(vischeck);
 
-            if all_visible {
-                // Forward directly without filtering when all buffered docs are visible.
-                if self.requires_scoring {
-                    for (&doc, &score) in self.doc_buffer.iter().zip(self.score_buffer.iter()) {
-                        self.inner.collect(doc, score);
-                    }
-                } else {
-                    self.inner.collect_block(&self.doc_buffer);
-                }
-            } else {
-                // In-place compaction of visible docs.
-                let mut write_idx = 0;
-                if self.requires_scoring {
-                    for read_idx in 0..self.doc_buffer.len() {
-                        if self.visibility_buffer[read_idx] {
-                            self.doc_buffer[write_idx] = self.doc_buffer[read_idx];
-                            self.score_buffer[write_idx] = self.score_buffer[read_idx];
-                            write_idx += 1;
+            match mask {
+                VisibilityMask::All { .. } => {
+                    // Forward directly without filtering when all buffered docs are visible.
+                    if self.requires_scoring {
+                        for (&doc, &score) in self.doc_buffer.iter().zip(self.score_buffer.iter()) {
+                            self.inner.collect(doc, score);
                         }
-                    }
-                    self.doc_buffer.truncate(write_idx);
-                    self.score_buffer.truncate(write_idx);
-                    for (&doc, &score) in self.doc_buffer.iter().zip(self.score_buffer.iter()) {
-                        self.inner.collect(doc, score);
-                    }
-                } else {
-                    for read_idx in 0..self.doc_buffer.len() {
-                        if self.visibility_buffer[read_idx] {
-                            self.doc_buffer[write_idx] = self.doc_buffer[read_idx];
-                            write_idx += 1;
-                        }
-                    }
-                    self.doc_buffer.truncate(write_idx);
-                    if !self.doc_buffer.is_empty() {
+                    } else {
                         self.inner.collect_block(&self.doc_buffer);
+                    }
+                }
+                VisibilityMask::Some(mask) => {
+                    // In-place compaction of visible docs.
+                    let mut write_idx = 0;
+                    if self.requires_scoring {
+                        for (read_idx, &is_vis) in mask.iter().enumerate() {
+                            if is_vis {
+                                self.doc_buffer[write_idx] = self.doc_buffer[read_idx];
+                                self.score_buffer[write_idx] = self.score_buffer[read_idx];
+                                write_idx += 1;
+                            }
+                        }
+                        self.doc_buffer.truncate(write_idx);
+                        self.score_buffer.truncate(write_idx);
+                        for (&doc, &score) in self.doc_buffer.iter().zip(self.score_buffer.iter()) {
+                            self.inner.collect(doc, score);
+                        }
+                    } else {
+                        for (read_idx, &is_vis) in mask.iter().enumerate() {
+                            if is_vis {
+                                self.doc_buffer[write_idx] = self.doc_buffer[read_idx];
+                                write_idx += 1;
+                            }
+                        }
+                        self.doc_buffer.truncate(write_idx);
+                        if !self.doc_buffer.is_empty() {
+                            self.inner.collect_block(&self.doc_buffer);
+                        }
                     }
                 }
             }

@@ -131,11 +131,11 @@ impl VisibilityStats {
 ///
 /// The visibility checker supports three operational modes for batches and one for point lookups:
 /// 1. Mask-only visibility checking ([`VisibilityChecker::check_segment_docs_mask`]):
-///    Checks the PostgreSQL visibility map first and returns a boolean mask.
+///    Checks the PostgreSQL visibility map first and returns a [`VisibilityMask`].
 /// 2. Fast-path visibility confirmation ([`VisibilityChecker::check_segment_docs`]):
-///    Checks the PostgreSQL visibility map first. On all-visible blocks, visibility is
-///    guaranteed for all active snapshots, so heap page access is bypassed entirely.
-///    The returned CTID is the raw index CTID, which may be an index root pointing to
+///    Checks the PostgreSQL visibility map first and returns [`VisibilityCtids`]. On all-visible
+///    blocks, visibility is guaranteed for all active snapshots, so heap page access is bypassed
+///    entirely. The returned CTID is the raw index CTID, which may be an index root pointing to
 ///    a HOT redirect (`LP_REDIRECT`). This is safe and optimal for execution plan nodes
 ///    like `VisibilityFilterExec` and `BatchScanner` whose downstream tuple fetcher
 ///    (e.g. `JoinScanState::build_result_tuple` or `BaseScan`) uses `table_index_fetch_tuple`
@@ -143,8 +143,8 @@ impl VisibilityStats {
 /// 3. Full physical HOT resolution ([`VisibilityChecker::resolve_segment_docs`]):
 ///    Forces a heap check for every tuple, bypassing the visibility map all-visible check,
 ///    and resolves the CTID to the exact current physical heap location of the tuple visible
-///    under this snapshot. This is required only when the caller cannot resolve HOT chains
-///    later (e.g. in `collect_ctidset` for bitmap index scans).
+///    under this snapshot, returning [`VisibilityCtids`]. This is required only when the caller
+///    cannot resolve HOT chains later (e.g. in `collect_ctidset` for bitmap index scans).
 /// 4. Point document visibility checking ([`VisibilityChecker::check_doc`]):
 ///    Checks visibility for a single document, consulting segment proof ranges and
 ///    resolving the CTID only when necessary (e.g. in cardinality aggregations).
@@ -209,6 +209,234 @@ crate::impl_safe_drop!(VisibilityChecker, |self| {
         }
     }
 });
+
+/// The result of checking document visibility without materializing CTIDs.
+///
+/// In the common case where all documents are visible under the snapshot, returns [`Self::All`]
+/// and avoids mutating or allocating the scratch buffer. When invisible documents are encountered,
+/// returns [`Self::Some`] containing the boolean visibility mask.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VisibilityMask<'a> {
+    /// All documents in the batch are visible under the snapshot.
+    All { count: usize },
+    /// Some documents in the batch are invisible. Each element indicates whether the document at
+    /// that position is visible.
+    Some(&'a [bool]),
+}
+
+impl<'a> VisibilityMask<'a> {
+    /// Returns `true` if all documents in the batch are visible under the snapshot.
+    #[inline]
+    pub fn is_all_visible(&self) -> bool {
+        matches!(self, Self::All { .. })
+    }
+
+    /// Returns the total number of documents in this batch.
+    #[inline]
+    pub fn len(&self) -> usize {
+        match self {
+            Self::All { count } => *count,
+            Self::Some(mask) => mask.len(),
+        }
+    }
+
+    /// Returns `true` if the batch contains no documents.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the number of visible documents in the batch.
+    #[inline]
+    pub fn count_visible(&self) -> usize {
+        match self {
+            Self::All { count } => *count,
+            Self::Some(mask) => mask.iter().filter(|&&v| v).count(),
+        }
+    }
+
+    /// Invokes `f` with the index of each visible document in the batch.
+    #[inline]
+    pub fn for_each_visible<F: FnMut(usize)>(&self, mut f: F) {
+        match self {
+            Self::All { count } => {
+                for i in 0..*count {
+                    f(i);
+                }
+            }
+            Self::Some(mask) => {
+                for (i, &is_vis) in mask.iter().enumerate() {
+                    if is_vis {
+                        f(i);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The result of checking visibility and resolving CTIDs for a batch of documents.
+///
+/// In the common case where all documents are visible under the snapshot, returns [`Self::All`]
+/// wrapping [`AllVisibleCtids`], which allows iterating directly over `u64` values without unwrapping
+/// `Option`. When invisible documents are encountered, returns [`Self::Some`] wrapping the
+/// `Option<u64>` slice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VisibilityCtids<'a> {
+    /// All documents in the batch are visible under the snapshot.
+    All(AllVisibleCtids<'a>),
+    /// Some documents in the batch are invisible. Each element is `Some(ctid)` if visible, or `None`
+    /// if invisible.
+    Some(&'a [Option<u64>]),
+}
+
+impl<'a> VisibilityCtids<'a> {
+    /// Returns `true` if all documents in the batch are visible under the snapshot.
+    #[inline]
+    pub fn is_all_visible(&self) -> bool {
+        matches!(self, Self::All(_))
+    }
+
+    /// Returns the total number of documents in this batch.
+    #[inline]
+    pub fn len(&self) -> usize {
+        match self {
+            Self::All(all) => all.len(),
+            Self::Some(slice) => slice.len(),
+        }
+    }
+
+    /// Returns `true` if the batch contains no documents.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns the number of visible documents in the batch.
+    #[inline]
+    pub fn count_visible(&self) -> usize {
+        match self {
+            Self::All(all) => all.len(),
+            Self::Some(slice) => slice.iter().filter(|c| c.is_some()).count(),
+        }
+    }
+
+    /// Invokes `f` with the document index and CTID of each visible document in the batch.
+    #[inline]
+    pub fn for_each_visible<F: FnMut(usize, u64)>(&self, mut f: F) {
+        match self {
+            Self::All(all) => {
+                for (i, ctid) in all.iter().enumerate() {
+                    f(i, ctid);
+                }
+            }
+            Self::Some(slice) => {
+                for (i, maybe_ctid) in slice.iter().enumerate() {
+                    if let Some(ctid) = maybe_ctid {
+                        f(i, *ctid);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Iterates over all visible CTIDs as `u64`.
+    pub fn iter_visible(&self) -> VisibilityCtidsIter<'a> {
+        match self {
+            Self::All(all) => VisibilityCtidsIter::All(all.iter()),
+            Self::Some(slice) => VisibilityCtidsIter::Some(slice.iter().copied().flatten()),
+        }
+    }
+}
+
+/// A slice of CTIDs guaranteed to be all-visible under a snapshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AllVisibleCtids<'a>(&'a [Option<u64>]);
+
+impl<'a> AllVisibleCtids<'a> {
+    /// Creates a new [`AllVisibleCtids`] from a slice where all elements are guaranteed to be `Some`.
+    #[inline]
+    pub fn new(slice: &'a [Option<u64>]) -> Self {
+        debug_assert!(
+            slice.iter().all(|c| c.is_some()),
+            "all CTIDs must be present in AllVisibleCtids"
+        );
+        Self(slice)
+    }
+
+    /// Returns the total number of CTIDs.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if there are no CTIDs.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns an iterator yielding raw `u64` CTIDs without `Option` wrapping.
+    #[inline]
+    pub fn iter(&self) -> AllVisibleCtidsIter<'a> {
+        AllVisibleCtidsIter(self.0.iter())
+    }
+}
+
+impl<'a> IntoIterator for AllVisibleCtids<'a> {
+    type Item = u64;
+    type IntoIter = AllVisibleCtidsIter<'a>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+pub struct AllVisibleCtidsIter<'a>(std::slice::Iter<'a, Option<u64>>);
+
+impl<'a> Iterator for AllVisibleCtidsIter<'a> {
+    type Item = u64;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0
+            .next()
+            .map(|c| c.expect("ctid must be present for visible doc"))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for AllVisibleCtidsIter<'a> {}
+
+pub enum VisibilityCtidsIter<'a> {
+    All(AllVisibleCtidsIter<'a>),
+    Some(std::iter::Flatten<std::iter::Copied<std::slice::Iter<'a, Option<u64>>>>),
+}
+
+impl<'a> Iterator for VisibilityCtidsIter<'a> {
+    type Item = u64;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::All(iter) => iter.next(),
+            Self::Some(iter) => iter.next(),
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::All(iter) => iter.size_hint(),
+            Self::Some(iter) => iter.size_hint(),
+        }
+    }
+}
 
 impl VisibilityChecker {
     /// Construct a new [`VisibilityChecker`] that can validate ctid visibility against the specified
@@ -392,18 +620,6 @@ impl VisibilityChecker {
             self.blockvis.1 = status != 0;
         }
         self.blockvis.1
-    }
-
-    /// Returns `Some(self)` if the segment requires visibility checking, or `None` if the segment
-    /// is proven all-visible under this checker's snapshot.
-    ///
-    /// Callers can use this to bypass buffering, visibility filtering, and compaction for all-visible
-    /// segments, and avoid reading CTIDs unless explicitly required.
-    pub(crate) fn for_segment(
-        &mut self,
-        segment_ord: SegmentOrdinal,
-    ) -> tantivy::Result<Option<&mut Self>> {
-        Ok((!self.is_segment_all_visible(segment_ord)?).then_some(self))
     }
 
     /// Convenience helper for callers holding an `Arc<Mutex<VisibilityChecker>>`.
@@ -694,10 +910,11 @@ impl VisibilityChecker {
                 return true;
             }
         }
-        let Some(ffhelper) = self.ffhelper.clone() else {
-            return false;
-        };
-        let Some(ctid) = ffhelper.ctid(segment_ord).as_u64(doc_id) else {
+        let Some(ctid) = self
+            .ffhelper
+            .as_ref()
+            .and_then(|ff| ff.ctid(segment_ord).as_u64(doc_id))
+        else {
             return false;
         };
         self.resolve_visible(ctid, None, false).is_some()
@@ -705,8 +922,8 @@ impl VisibilityChecker {
 
     /// Checks visibility of documents within a segment and populates a boolean visibility mask.
     ///
-    /// Returns `true` if all documents in `doc_ids` are confirmed visible, or `false` if any
-    /// document is invisible or absent.
+    /// If all documents are confirmed visible, returns [`VisibilityMask::All`] and avoids
+    /// modifying `mask`. Otherwise, populates `mask` and returns [`VisibilityMask::Some`].
     ///
     /// # Preconditions
     ///
@@ -715,16 +932,16 @@ impl VisibilityChecker {
     ///
     /// For all-visible blocks, visibility is confirmed via the visibility map fast-path without
     /// reading heap buffers.
-    pub fn check_segment_docs_mask(
+    pub fn check_segment_docs_mask<'a>(
         &mut self,
         segment_ord: SegmentOrdinal,
         doc_ids: &[DocId],
-        mask: &mut [bool],
-    ) -> bool {
-        assert_eq!(doc_ids.len(), mask.len());
-        mask.fill(true);
+        mask: &'a mut Vec<bool>,
+    ) -> VisibilityMask<'a> {
         if doc_ids.is_empty() || !self.check_visibility {
-            return true;
+            return VisibilityMask::All {
+                count: doc_ids.len(),
+            };
         }
         assert!(
             doc_ids.is_sorted(),
@@ -733,8 +950,13 @@ impl VisibilityChecker {
         let ranges = self.doc_id_ranges_needing_visibility_checks(segment_ord);
         // Fast path: if all blocks in the segment are confirmed all-visible, exit immediately.
         if ranges.as_ref().is_some_and(|r| r.is_empty()) {
-            return true;
+            return VisibilityMask::All {
+                count: doc_ids.len(),
+            };
         }
+
+        mask.clear();
+        mask.resize(doc_ids.len(), true);
 
         let ffhelper = self
             .ffhelper
@@ -742,7 +964,7 @@ impl VisibilityChecker {
             .expect("FFHelper must be configured to check segment doc visibility");
         let mut raw_ctids = std::mem::take(&mut self.raw_ctids_scratch);
         let mut ctids = Vec::new();
-        let mut all_visible = mask.iter().all(|&v| v);
+        let mut all_visible = true;
         {
             let mut check = |start: usize, end: usize| {
                 if start == end {
@@ -789,14 +1011,20 @@ impl VisibilityChecker {
         }
         self.raw_ctids_scratch = raw_ctids;
         debug_assert_eq!(all_visible, mask.iter().all(|&v| v));
-        all_visible
+        if all_visible {
+            VisibilityMask::All {
+                count: doc_ids.len(),
+            }
+        } else {
+            VisibilityMask::Some(mask.as_slice())
+        }
     }
 
     /// Checks if a slice of `DocId`s within a segment are visible, fetching ctids directly from
     /// the configured [`FFHelper`].
     ///
-    /// Returns `true` if all documents in `doc_ids` are confirmed visible, or `false` if any
-    /// document is invisible or absent.
+    /// If all documents are confirmed visible, returns [`VisibilityCtids::All`] wrapping
+    /// [`AllVisibleCtids`]. Otherwise, populates `results` and returns [`VisibilityCtids::Some`].
     ///
     /// For all-visible blocks, visibility is confirmed via the visibility map fast-path without
     /// reading heap buffers. The returned CTID for an all-visible block is the raw index CTID,
@@ -807,12 +1035,12 @@ impl VisibilityChecker {
     /// or `BaseScan::check_visibility`) that follows HOT redirects via `table_index_fetch_tuple`
     /// (`exec_if_visible`) for the final surviving rows, avoiding heap page reads for candidate
     /// rows discarded during query execution.
-    pub fn check_segment_docs(
+    pub fn check_segment_docs<'a>(
         &mut self,
         segment_ord: SegmentOrdinal,
         doc_ids: &[DocId],
-        results: &mut [Option<u64>],
-    ) -> bool {
+        results: &'a mut Vec<Option<u64>>,
+    ) -> VisibilityCtids<'a> {
         self.check_segment_docs_impl(segment_ord, doc_ids, results, false)
     }
 
@@ -820,8 +1048,8 @@ impl VisibilityChecker {
     /// physical HOT member visible under this checker's snapshot, fetching ctids directly from
     /// the configured [`FFHelper`].
     ///
-    /// Returns `true` if all documents in `doc_ids` are confirmed visible, or `false` if any
-    /// document is invisible or absent.
+    /// If all documents are confirmed visible, returns [`VisibilityCtids::All`] wrapping
+    /// [`AllVisibleCtids`]. Otherwise, populates `results` and returns [`VisibilityCtids::Some`].
     ///
     /// Unlike [`Self::check_segment_docs`], this forces a heap buffer read and executes `heap_hot_search_buffer`
     /// for every tuple even on all-visible blocks, guaranteeing that the returned CTID is the exact
@@ -830,26 +1058,28 @@ impl VisibilityChecker {
     /// NOTE: This touches shared buffers for every block and is significantly more expensive than
     /// [`Self::check_segment_docs`]. Use this only when the caller requires the physical heap CTID directly
     /// and will not perform an index-based heap fetch (e.g. in `SearchIndexReader::collect_ctidset`).
-    pub fn resolve_segment_docs(
+    pub fn resolve_segment_docs<'a>(
         &mut self,
         segment_ord: SegmentOrdinal,
         doc_ids: &[DocId],
-        results: &mut [Option<u64>],
-    ) -> bool {
+        results: &'a mut Vec<Option<u64>>,
+    ) -> VisibilityCtids<'a> {
         self.check_segment_docs_impl(segment_ord, doc_ids, results, true)
     }
 
-    fn check_segment_docs_impl(
+    fn check_segment_docs_impl<'a>(
         &mut self,
         segment_ord: SegmentOrdinal,
         doc_ids: &[DocId],
-        results: &mut [Option<u64>],
+        results: &'a mut Vec<Option<u64>>,
         resolve_hot: bool,
-    ) -> bool {
+    ) -> VisibilityCtids<'a> {
+        results.clear();
+        results.resize(doc_ids.len(), None);
+
         if doc_ids.is_empty() {
-            return true;
+            return VisibilityCtids::All(AllVisibleCtids::new(results.as_slice()));
         }
-        assert_eq!(doc_ids.len(), results.len());
 
         let ffhelper = self
             .ffhelper
@@ -864,7 +1094,11 @@ impl VisibilityChecker {
             results.copy_from_slice(&raw_ctids);
             let all_visible = results.iter().all(|r| r.is_some());
             self.raw_ctids_scratch = raw_ctids;
-            return all_visible;
+            return if all_visible {
+                VisibilityCtids::All(AllVisibleCtids::new(results.as_slice()))
+            } else {
+                VisibilityCtids::Some(results.as_slice())
+            };
         }
 
         let ranges = self.doc_id_ranges_needing_visibility_checks(segment_ord);
@@ -875,7 +1109,11 @@ impl VisibilityChecker {
             results.copy_from_slice(&raw_ctids);
             let all_visible = results.iter().all(|r| r.is_some());
             self.raw_ctids_scratch = raw_ctids;
-            return all_visible;
+            return if all_visible {
+                VisibilityCtids::All(AllVisibleCtids::new(results.as_slice()))
+            } else {
+                VisibilityCtids::Some(results.as_slice())
+            };
         }
 
         let all_visible = if !resolve_hot
@@ -917,7 +1155,11 @@ impl VisibilityChecker {
 
         self.raw_ctids_scratch = raw_ctids;
         debug_assert_eq!(all_visible, results.iter().all(|r| r.is_some()));
-        all_visible
+        if all_visible {
+            VisibilityCtids::All(AllVisibleCtids::new(results.as_slice()))
+        } else {
+            VisibilityCtids::Some(results.as_slice())
+        }
     }
 
     fn check_raw_ctids_impl(
@@ -1663,5 +1905,68 @@ impl<I: Iterator<Item = u64>> Iterator for PrefetchWindow<'_, I> {
             self.blocks_in_window -= 1;
         }
         Some(ctid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_visibility_mask_all() {
+        let mask = VisibilityMask::All { count: 5 };
+        assert!(mask.is_all_visible());
+        assert_eq!(mask.len(), 5);
+        assert!(!mask.is_empty());
+        assert_eq!(mask.count_visible(), 5);
+
+        let mut indices = Vec::new();
+        mask.for_each_visible(|i| indices.push(i));
+        assert_eq!(indices, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_visibility_mask_some() {
+        let raw = vec![true, false, true, false, true];
+        let mask = VisibilityMask::Some(&raw);
+        assert!(!mask.is_all_visible());
+        assert_eq!(mask.len(), 5);
+        assert!(!mask.is_empty());
+        assert_eq!(mask.count_visible(), 3);
+
+        let mut indices = Vec::new();
+        mask.for_each_visible(|i| indices.push(i));
+        assert_eq!(indices, vec![0, 2, 4]);
+    }
+
+    #[test]
+    fn test_visibility_ctids_all() {
+        let ctids = vec![Some(10), Some(20), Some(30)];
+        let all = AllVisibleCtids::new(&ctids);
+        let vis = VisibilityCtids::All(all);
+        assert_eq!(vis.count_visible(), 3);
+
+        let mut collected = Vec::new();
+        vis.for_each_visible(|i, c| collected.push((i, c)));
+        assert_eq!(collected, vec![(0, 10), (1, 20), (2, 30)]);
+
+        assert_eq!(vis.iter_visible().collect::<Vec<_>>(), vec![10, 20, 30]);
+        assert_eq!(
+            AllVisibleCtids::new(&ctids).into_iter().collect::<Vec<_>>(),
+            vec![10, 20, 30]
+        );
+    }
+
+    #[test]
+    fn test_visibility_ctids_some() {
+        let ctids = vec![Some(10), None, Some(30), None];
+        let vis = VisibilityCtids::Some(&ctids);
+        assert_eq!(vis.count_visible(), 2);
+
+        let mut collected = Vec::new();
+        vis.for_each_visible(|i, c| collected.push((i, c)));
+        assert_eq!(collected, vec![(0, 10), (2, 30)]);
+
+        assert_eq!(vis.iter_visible().collect::<Vec<_>>(), vec![10, 30]);
     }
 }

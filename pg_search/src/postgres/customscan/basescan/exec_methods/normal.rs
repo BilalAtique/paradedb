@@ -51,8 +51,6 @@ pub struct NormalScanExecState {
     search_results: Option<MultiSegmentSearchResults>,
 
     did_query: bool,
-    /// Cached (segment_ord, is_all_visible) to avoid re-proving across docs in the same segment.
-    segment_all_visible: Option<(SegmentOrdinal, bool)>,
 
     prepared_batch: Vec<PreparedItem>,
     batch_idx: usize,
@@ -75,7 +73,6 @@ impl NormalScanExecState {
             slot: std::ptr::null_mut(),
             search_results: None,
             did_query: false,
-            segment_all_visible: None,
             prepared_batch: Vec::with_capacity(BATCH_SIZE),
             batch_idx: 0,
             batch_doc_ids: Vec::with_capacity(BATCH_SIZE),
@@ -170,37 +167,13 @@ impl NormalScanExecState {
         }
 
         if self.can_use_visibility_map {
-            let is_all_vis = match self.segment_all_visible {
-                Some((cur_ord, all_vis)) if cur_ord == seg_ord => all_vis,
-                _ => {
-                    let all_vis = state
-                        .visibility_checker()
-                        .is_segment_all_visible(seg_ord)
-                        .unwrap_or(false);
-                    self.segment_all_visible = Some((seg_ord, all_vis));
-                    all_vis
-                }
-            };
-
-            if is_all_vis {
-                self.prepared_batch.resize(count, PreparedItem::Virtual);
-            } else {
-                self.batch_mask.resize(count, true);
-                let all_vis = state.visibility_checker().check_segment_docs_mask(
-                    seg_ord,
-                    &self.batch_doc_ids,
-                    &mut self.batch_mask,
-                );
-                if all_vis {
-                    self.prepared_batch.resize(count, PreparedItem::Virtual);
-                } else {
-                    for &is_visible in &self.batch_mask {
-                        if is_visible {
-                            self.prepared_batch.push(PreparedItem::Virtual);
-                        }
-                    }
-                }
-            }
+            let mask = state.visibility_checker().check_segment_docs_mask(
+                seg_ord,
+                &self.batch_doc_ids,
+                &mut self.batch_mask,
+            );
+            self.prepared_batch
+                .resize(mask.count_visible(), PreparedItem::Virtual);
         } else {
             let ffhelper = state.visibility_checker().ffhelper().cloned().unwrap();
             self.batch_ctids.resize(count, None);
@@ -311,7 +284,6 @@ impl ExecMethod for NormalScanExecState {
     fn reset(&mut self, _state: &mut BaseScanState) {
         self.did_query = false;
         self.search_results = None;
-        self.segment_all_visible = None;
         self.prepared_batch.clear();
         self.batch_idx = 0;
         self.emitted = 0;

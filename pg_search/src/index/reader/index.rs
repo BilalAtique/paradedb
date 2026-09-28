@@ -1009,23 +1009,8 @@ impl SearchIndexReader {
                     continue;
                 }
 
-                resolved.clear();
-                resolved.resize(doc_ids.len(), None);
-                let all_vis = visibility.resolve_segment_docs(seg_ord, &doc_ids, &mut resolved);
-                if all_vis {
-                    visible_ctids = resolved
-                        .drain(..)
-                        .map(|c| c.expect("ctid must be present for visible doc"))
-                        .collect::<Vec<_>>()
-                        .into_iter();
-                } else {
-                    visible_ctids = resolved
-                        .iter()
-                        .copied()
-                        .flatten()
-                        .collect::<Vec<_>>()
-                        .into_iter();
-                }
+                let ctids = visibility.resolve_segment_docs(seg_ord, &doc_ids, &mut resolved);
+                visible_ctids = ctids.iter_visible().collect::<Vec<_>>().into_iter();
             }
         }))
     }
