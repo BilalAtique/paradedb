@@ -1,0 +1,119 @@
+# Fork-only verification for the regex tokenizer name fix. Never part of the PR.
+name: verify
+on:
+  push:
+    branches: ["verify/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (rust-toolchain.toml)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends clang lld pkg-config libssl-dev
+          rustup show active-toolchain || rustup show
+          rustc --version
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+      - name: clippy (tokenizers)
+        run: cargo clippy -p tokenizers --all-targets -- -D warnings
+      - name: tokenizers tests WITH the fix
+        run: cargo test -p tokenizers 2>&1 | tee with-fix.log | tail -40
+      - name: regex tests WITHOUT the fix must fail
+        run: |
+          set -u
+          sed -i 's/format!("regex_pattern:{pattern:?}{filters_suffix}")/format!("regex{filters_suffix}")/' tokenizers/src/manager.rs
+          # Confirm the sabotage landed before trusting the result.
+          if grep -q 'regex_pattern:{pattern:?}' tokenizers/src/manager.rs; then echo "sabotage did not apply"; exit 1; fi
+          git diff --stat
+          if cargo test -p tokenizers regex 2>&1 | tee without-fix.log; then
+            echo "::error::regex tests passed without the fix"; exit 1
+          fi
+          echo "---- failures without the fix ----"
+          grep -E "^test .*(FAILED|ok)$|panicked|left:|right:" without-fix.log | head -40
+          git checkout -- tokenizers/src/manager.rs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-logs
+          path: "*.log"
+
+  regress:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Free disk and add swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
+          sudo docker image prune --all --force >/dev/null || true
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /mnt/swapfile && sudo chmod 600 /mnt/swapfile && sudo mkswap /mnt/swapfile && sudo swapon /mnt/swapfile
+          df -h / /mnt; free -h
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lsof build-essential clang lld flex bison pkg-config ca-certificates git \
+            libreadline-dev zlib1g-dev libssl-dev libkrb5-dev liblz4-dev libzstd-dev libcurl4-openssl-dev libopenblas-dev libicu-dev
+      - name: Toolchain and cargo-pgrx
+        run: |
+          rustup show active-toolchain || rustup show
+          cargo install cargo-pgrx --version 0.19.2 --locked
+      - name: pgrx init (PostgreSQL 18)
+        run: cargo pgrx init --pg18=download --configure-flag=--without-readline
+      - name: pgvector
+        run: |
+          PGC=$(ls -d ~/.pgrx/18.*/pgrx-install/bin/pg_config)
+          git clone -q --branch v0.8.6 https://github.com/pgvector/pgvector.git /tmp/pgvector
+          make -C /tmp/pgvector -j"$(nproc)" PG_CONFIG="$PGC" && make -C /tmp/pgvector install PG_CONFIG="$PGC"
+      - name: Build and install pg_search
+        working-directory: pg_search/
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: cargo pgrx install --pg-config "$(ls -d ~/.pgrx/18.*/pgrx-install/bin/pg_config)" --features=pg18
+      - name: Configure and start Postgres
+        run: |
+          sed -i "s/^#shared_preload_libraries = .*/shared_preload_libraries = 'pg_search'/" ~/.pgrx/data-18/postgresql.conf
+          cd tests && cargo pgrx start pg18
+      - name: pg_regress WITH the fix (record the new test, check the updated one)
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: |
+          cargo pgrx regress --package pg_search --add regex-tokenizer-patterns pg18 2>&1 | grep -v "schema upgrade file" | tee regress.log
+          cargo pgrx regress --package pg_search pg18 tokenizer-types-in-create-index 2>&1 | grep -v "schema upgrade file" | tee -a regress.log
+          echo "---- git status ----"; git status --short
+          echo "---- recorded regex-tokenizer-patterns.out ----"; cat pg_search/tests/pg_regress/expected/regex-tokenizer-patterns.out
+      - name: pg_regress WITHOUT the fix must fail
+        env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: |
+          sed -i 's/format!("regex_pattern:{pattern:?}{filters_suffix}")/format!("regex{filters_suffix}")/' tokenizers/src/manager.rs
+          if grep -q 'regex_pattern:{pattern:?}' tokenizers/src/manager.rs; then echo "sabotage did not apply"; exit 1; fi
+          git diff --stat -- tokenizers
+          if cargo pgrx regress --package pg_search pg18 regex-tokenizer-patterns 2>&1 | grep -v "schema upgrade file" | tee without-fix.log; then
+            echo "::error::regex-tokenizer-patterns passed without the fix"; exit 1
+          fi
+          echo "---- expected (with fix) vs actual (without fix) ----"
+          diff -u pg_search/tests/pg_regress/expected/regex-tokenizer-patterns.out pg_search/tests/pg_regress/results/regex-tokenizer-patterns.out || true
+          git checkout -- tokenizers/src/manager.rs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regress-output
+          path: |
+            regress.log
+            without-fix.log
+            pg_search/tests/pg_regress/expected/regex-tokenizer-patterns.out
+            pg_search/tests/pg_regress/results/
+            ~/.pgrx/18.log
