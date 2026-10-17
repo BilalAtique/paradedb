@@ -37,7 +37,7 @@ jobs:
           free -h
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 3
+          fetch-depth: 0
       - name: System packages
         run: |
           sudo apt-get update -q
@@ -59,6 +59,12 @@ jobs:
           git clone -q --depth 1 --branch v0.8.6 https://github.com/pgvector/pgvector.git /tmp/pgvector
           make -C /tmp/pgvector -j2 PG_CONFIG="${configs[0]}"
           make -C /tmp/pgvector install PG_CONFIG="${configs[0]}"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: joinscan-6630
+          shared-key: pg${{ matrix.pg }}
+          cache-all-crates: true
+          cache-on-failure: true
       - name: Build the upstream baseline without the fix
         run: |
           for source in pg_search/src/postgres/customscan/joinscan/build.rs pg_search/src/postgres/customscan/joinscan/mod.rs; do
