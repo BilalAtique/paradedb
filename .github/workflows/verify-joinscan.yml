@@ -102,7 +102,8 @@ jobs:
       - name: Generate and check pg_regress output
         run: |
           cargo pgrx regress --package pg_search --add join_system_columns "pg${PGVER}" 2>&1 | tee regress.log
-          cargo pgrx regress --package pg_search "pg${PGVER}" join_system_columns join_hot_update_vacuum 2>&1 | tee -a regress.log
+          cargo pgrx regress --package pg_search "pg${PGVER}" join_system_columns 2>&1 | tee -a regress.log
+          cargo pgrx regress --package pg_search "pg${PGVER}" join_hot_update_vacuum 2>&1 | tee -a regress.log
           git status --short
       - uses: actions/upload-artifact@v4
         if: always()
