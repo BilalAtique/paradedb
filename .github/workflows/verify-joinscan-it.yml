@@ -27,7 +27,7 @@ jobs:
       FIXED_SOURCES: pg_search/src/postgres/customscan/joinscan/build.rs pg_search/src/postgres/customscan/joinscan/mod.rs
       EXPECTED: pg_search/tests/pg_regress/expected/join_system_columns.out
       # true: pg_regress writes a new expected file. false: the committed file is checked.
-      REGENERATE: "true"
+      REGENERATE: "false"
     steps:
       - name: Free runner disk and add swap
         run: |
