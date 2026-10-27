@@ -23,7 +23,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_BUILD_JOBS: "2"
       PGVER: ${{ matrix.pg }}
-      BASELINE: fa7c743237bafd2e5fa96f19ea311bc98be384a4
+      BASELINE: 97bc1c667888a76a3b48fd6a2a692422e2d82ffc
       FIXED_SOURCES: pg_search/src/postgres/customscan/joinscan/build.rs pg_search/src/postgres/customscan/joinscan/mod.rs
       EXPECTED: pg_search/tests/pg_regress/expected/join_system_columns.out
       # true: pg_regress writes a new expected file. false: the committed file is checked.
