@@ -83,10 +83,7 @@ enum SystemColumnsCase {
 #[case::self_join(SystemColumnsCase::SelfJoin)]
 #[case::only_system_columns(SystemColumnsCase::OnlySystemColumns)]
 #[case::updated_tuple(SystemColumnsCase::UpdatedTuple)]
-fn joinscan_system_columns_match_postgres(
-    #[case] case: SystemColumnsCase,
-    mut conn: PgConnection,
-) {
+fn joinscan_system_columns_match_postgres(#[case] case: SystemColumnsCase, mut conn: PgConnection) {
     setup(&mut conn);
 
     let (query, expected_rows) = match case {
