@@ -28,9 +28,9 @@ jobs:
       TEST: heap_filter_system_columns
       EXPECTED: pg_search/tests/pg_regress/expected/heap_filter_system_columns.out
       # true: pg_regress writes a new expected file. false: the committed file is checked.
-      REGENERATE: "true"
+      REGENERATE: "false"
       # Set after the first run: the summary line the baseline must print.
-      BASELINE_RESULT: ""
+      BASELINE_RESULT: "test result: FAILED. 0 passed; 4 failed"
     steps:
       - name: Free runner disk and add swap
         run: |
