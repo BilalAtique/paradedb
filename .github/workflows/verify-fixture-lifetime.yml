@@ -89,7 +89,7 @@ jobs:
           set -e
           test "$status" -ne 0
           grep -F 'test result: FAILED. 0 passed; 9 failed' without-fix.log
-          test "$(grep -c 'database_exists=true, registered=true' without-fix.log)" -eq 9
+          test "$(grep -c '^after .*database_exists=true, registered=true' without-fix.log)" -eq 9
           test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM pg_database WHERE starts_with(datname, '_sqlx_test_')")" -eq 0
       - name: Fixed lifecycle must pass on the same cluster
         run: |
