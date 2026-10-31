@@ -1,0 +1,124 @@
+# Fork-only proof; excluded from the upstream PR.
+name: verify-fixture-lifetime
+on:
+  push:
+    branches: [verify/test-database-fixture-lifetime]
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify:
+    name: Fixture lifetime PG${{ matrix.pg }} with Citus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [15, 18]
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      PGVER: ${{ matrix.pg }}
+      BASELINE: 6e3efd5ad21750cf6857d7019ecbdf70c6cadda0
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Free disk and configure swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+      - name: Build dependencies and pinned Rust
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lsof build-essential clang lld flex bison pkg-config ca-certificates git libreadline-dev zlib1g-dev libssl-dev libkrb5-dev liblz4-dev libzstd-dev libcurl4-openssl-dev libopenblas-dev libicu-dev
+          rustup show
+          rustup component add clippy rustfmt
+          cargo install cargo-pgrx --version "$(sed -nE 's/^pgrx = "=?([^"]+)"$/\1/p' Cargo.toml)" --debug --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: fixture-lifetime-6933
+          shared-key: pg${{ matrix.pg }}
+          cache-all-crates: true
+          cache-on-failure: true
+      - name: Assertion-enabled PostgreSQL, pgvector, Citus
+        run: |
+          cargo pgrx init "--pg${PGVER}=download" --configure-flag=--without-readline
+          configs=("$HOME"/.pgrx/"${PGVER}".*/pgrx-install/bin/pg_config)
+          export PG_CONFIG="${configs[0]}"
+          echo "PG_CONFIG=$PG_CONFIG" >> "$GITHUB_ENV"
+          echo "$(dirname "$PG_CONFIG")" >> "$GITHUB_PATH"
+          git clone -q --depth 1 --branch v0.8.6 https://github.com/pgvector/pgvector.git /tmp/pgvector
+          make -C /tmp/pgvector -j2 PG_CONFIG="$PG_CONFIG"
+          make -C /tmp/pgvector install PG_CONFIG="$PG_CONFIG"
+          if [[ "$PGVER" == 15 ]]; then citus=v13.3.0; else citus=v14.1.0; fi
+          git clone -q --depth 1 --branch "$citus" https://github.com/citusdata/citus.git /tmp/citus
+          (cd /tmp/citus && ./configure --without-libcurl && make -j2 && make install)
+          cat >> "$HOME/.pgrx/data-${PGVER}/postgresql.conf" <<CONF
+          shared_preload_libraries = 'citus,pg_search'
+          max_connections = 100
+          max_worker_processes = 8
+          max_parallel_workers = 8
+          citus.node_conninfo = 'sslmode=prefer'
+          CONF
+      - name: Format and install pg_search
+        run: |
+          cargo fmt --all -- --check
+          cargo pgrx install --package pg_search --pg-config "$PG_CONFIG" --no-default-features --features "pg${PGVER}"
+          cargo pgrx start --package pg_search "pg${PGVER}"
+          createdb -h localhost -p "288${PGVER}" pg_search
+          echo "DATABASE_URL=postgresql://$(whoami)@localhost:288${PGVER}/pg_search" >> "$GITHUB_ENV"
+          git rev-parse HEAD
+          "$PG_CONFIG" --version
+      - name: Baseline must leak on all nine cases
+        run: |
+          psql "$DATABASE_URL" -Atc "SHOW max_worker_processes; SHOW shared_preload_libraries; SELECT count(*) FROM pg_database WHERE starts_with(datname, '_sqlx_test_');"
+          git show "$BASELINE":tests/src/fixtures/db.rs > tests/src/fixtures/db.rs
+          set +e
+          cargo test --package tests --test fixture_lifetime -- --test-threads=1 --nocapture 2>&1 | tee without-fix.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F 'test result: FAILED. 0 passed; 9 failed' without-fix.log
+          test "$(grep -c 'database_exists=true, registered=true' without-fix.log)" -eq 9
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM pg_database WHERE starts_with(datname, '_sqlx_test_')")" -eq 0
+      - name: Fixed lifecycle must pass on the same cluster
+        run: |
+          git checkout HEAD -- tests/src/fixtures/db.rs
+          cargo test --package tests --test fixture_lifetime -- --test-threads=1 --nocapture 2>&1 | tee with-fix.log
+          grep -F 'test result: ok. 9 passed; 0 failed' with-fix.log
+          test "$(grep -c 'database_exists=false, registered=false, citus_workers=0' with-fix.log)" -eq 9
+      - name: Existing Citus tests release their databases and workers
+        run: |
+          cargo test --package tests --test citus_compatibility -- --test-threads=1 --nocapture 2>&1 | tee citus.log
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM pg_database WHERE starts_with(datname, '_sqlx_test_')")" -eq 0
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM pg_stat_activity WHERE backend_type LIKE 'Citus%' AND starts_with(datname, '_sqlx_test_')")" -eq 0
+      - name: Later MPP and ordinary fixture callers
+        run: |
+          cargo test --package tests --test mpp_cancel -- --nocapture 2>&1 | tee mpp-cancel.log
+          cargo test --package tests --test mpp_joinscan_concurrent -- --nocapture 2>&1 | tee mpp-concurrent.log
+          cargo test --package tests --test joinscan_system_columns 2>&1 | tee ordinary.log
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM pg_database WHERE starts_with(datname, '_sqlx_test_')")" -eq 0
+      - name: Focused Clippy
+        run: cargo clippy --package tests --test fixture_lifetime -- -D warnings
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fixture-lifetime-pg${{ matrix.pg }}
+          path: |
+            without-fix.log
+            with-fix.log
+            citus.log
+            mpp-cancel.log
+            mpp-concurrent.log
+            ordinary.log
+            ~/.pgrx/${{ matrix.pg }}.log
