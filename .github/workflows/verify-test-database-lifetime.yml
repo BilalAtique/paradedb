@@ -1,0 +1,148 @@
+# Fork-only proof for #6933; not part of the upstream PR.
+name: verify-test-database-lifetime
+on:
+  push:
+    branches: [verify/test-database-lifetime]
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify:
+    name: PG${{ matrix.pg }} with Citus
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: [15, 18]
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      PGVER: ${{ matrix.pg }}
+      BASELINE: 44cf1813a
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Free disk and configure swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+      - name: Build dependencies and pinned Rust
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lsof build-essential clang lld flex bison pkg-config ca-certificates git libreadline-dev zlib1g-dev libssl-dev libkrb5-dev liblz4-dev libzstd-dev libcurl4-openssl-dev libopenblas-dev libicu-dev
+          rustup show
+          rustup component add clippy rustfmt
+          cargo install cargo-pgrx --version "$(sed -nE 's/^pgrx = "=?([^"]+)"$/\1/p' Cargo.toml)" --debug --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: fixture-lifetime-6933
+          shared-key: pg${{ matrix.pg }}
+          cache-all-crates: true
+          cache-on-failure: true
+      - name: Assertion-enabled PostgreSQL, pgvector, Citus
+        run: |
+          cargo pgrx init "--pg${PGVER}=download" --configure-flag=--without-readline
+          configs=("$HOME"/.pgrx/"${PGVER}".*/pgrx-install/bin/pg_config)
+          export PG_CONFIG="${configs[0]}"
+          echo "PG_CONFIG=$PG_CONFIG" >> "$GITHUB_ENV"
+          echo "$(dirname "$PG_CONFIG")" >> "$GITHUB_PATH"
+          git clone -q --depth 1 --branch v0.8.6 https://github.com/pgvector/pgvector.git /tmp/pgvector
+          make -C /tmp/pgvector -j2 PG_CONFIG="$PG_CONFIG"
+          make -C /tmp/pgvector install PG_CONFIG="$PG_CONFIG"
+          if [[ "$PGVER" == 15 ]]; then citus=v13.3.0; else citus=v14.1.0; fi
+          git clone -q --depth 1 --branch "$citus" https://github.com/citusdata/citus.git /tmp/citus
+          (cd /tmp/citus && ./configure --without-libcurl && make -j2 && make install)
+          # Same settings as test-pg_search.yml. Citus raises max_prepared_transactions itself.
+          cat >> "$HOME/.pgrx/data-${PGVER}/postgresql.conf" <<CONF
+          shared_preload_libraries = 'citus,pg_search'
+          max_connections = 300
+          citus.node_conninfo = 'sslmode=prefer'
+          max_worker_processes = 32
+          CONF
+      - name: Install pg_search
+        run: |
+          cargo pgrx install --package pg_search --pg-config "$PG_CONFIG" --no-default-features --features "pg${PGVER}"
+          cargo pgrx start --package pg_search "pg${PGVER}"
+          createdb -h localhost -p "288${PGVER}" pg_search
+          echo "DATABASE_URL=postgresql://$(whoami)@localhost:288${PGVER}/pg_search" >> "$GITHUB_ENV"
+          git rev-parse HEAD
+          "$PG_CONFIG" --version
+          cat > /tmp/state.sh <<'SH'
+          psql "$DATABASE_URL" -XAt -c "SELECT 'test_databases=' || count(*) FROM pg_database WHERE starts_with(datname, '_sqlx_test_')"
+          psql "$DATABASE_URL" -XAt -c "SELECT 'citus_daemons=' || count(*) FROM pg_stat_activity WHERE backend_type LIKE 'Citus%'"
+          psql "$DATABASE_URL" -XAt -c "SELECT 'sweep_workers=' || count(*) FROM pg_stat_activity WHERE backend_type = 'pg_search mutable sweep'"
+          SH
+          cat > /tmp/clean.sh <<'SH'
+          for name in $(psql "$DATABASE_URL" -XAt -c "SELECT datname FROM pg_database WHERE starts_with(datname, '_sqlx_test_')"); do
+            psql "$DATABASE_URL" -XAt -c "DROP DATABASE \"$name\" WITH (FORCE)"
+          done
+          psql "$DATABASE_URL" -XAt -c "DELETE FROM _sqlx_test.databases" 2>/dev/null || true
+          SH
+      - name: Without the fix, the new test fails and databases leak
+        run: |
+          git show "$BASELINE":tests/src/fixtures/db.rs > tests/src/fixtures/db.rs
+          set +e
+          cargo test --package tests --test fixture_lifetime 2>&1 | tee without-fix.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F 'test result: FAILED. 0 passed; 2 failed' without-fix.log
+          cargo test --package tests --test citus_compatibility -- --test-threads=1 2>&1 | tee citus-without-fix.log
+          bash /tmp/state.sh | tee state-without-fix.log
+          bash /tmp/clean.sh
+          git checkout HEAD -- tests/src/fixtures/db.rs
+      - name: With the fix, the new test passes and nothing leaks
+        run: |
+          cargo test --package tests --test fixture_lifetime 2>&1 | tee with-fix.log
+          grep -F 'test result: ok. 2 passed; 0 failed' with-fix.log
+          cargo test --package tests --test citus_compatibility -- --test-threads=1 2>&1 | tee citus-with-fix.log
+          cargo test --package tests --test typmod_subtransaction 2>&1 | tee typmod.log
+          cargo test --package tests --test joinscan_system_columns 2>&1 | tee joinscan.log
+          cargo test --package tests --test mpp_cancel 2>&1 | tee mpp-cancel.log
+          bash /tmp/state.sh | tee state-with-fix.log
+          grep -Fx 'test_databases=0' state-with-fix.log
+          grep -Fx 'citus_daemons=0' state-with-fix.log
+          ! grep -h 'could not drop test database' with-fix.log citus-with-fix.log typmod.log joinscan.log mpp-cancel.log
+      - name: Without the joined rollback, typmod_subtransaction fails
+        run: |
+          cp tests/tests/typmod_subtransaction.rs /tmp/fixed-typmod.rs
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          path = Path('tests/tests/typmod_subtransaction.rs')
+          new = path.read_text()
+          old = subprocess.check_output(['git', 'show', os.environ['BASELINE'] + ':tests/tests/typmod_subtransaction.rs'], text=True)
+          start, end = 'impl Drop for PreparedTransactionCleanup {', '\n#[rstest]'
+          a, b = new.index(start), new.index(end, new.index(start))
+          c, d = old.index(start), old.index(end, old.index(start))
+          path.write_text(new[:a] + old[c:d] + new[b:])
+          PY
+          set +e
+          cargo test --package tests --test typmod_subtransaction prepared_transactions_cleaned_up_on_failure 2>&1 | tee typmod-without-join.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F 'failure cleanup left prepared transactions behind' typmod-without-join.log
+          cp /tmp/fixed-typmod.rs tests/tests/typmod_subtransaction.rs
+      - name: Format and Clippy
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --package tests --test fixture_lifetime --test typmod_subtransaction -- -D warnings
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-database-lifetime-pg${{ matrix.pg }}
+          path: |
+            *.log
+            ~/.pgrx/${{ matrix.pg }}.log
