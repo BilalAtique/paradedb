@@ -1,0 +1,56 @@
+# Fork-only check of float GROUP BY and filter bugs on main; not for upstream.
+name: verify-float-group-keys
+on:
+  push:
+    branches: [verify/float-group-keys]
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  repro:
+    name: PG18 main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: "4"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
+      - name: Build dependencies and pinned Rust
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends build-essential clang lld flex bison pkg-config libreadline-dev zlib1g-dev libssl-dev libicu-dev
+          rustup show
+          cargo install cargo-pgrx --version "$(sed -nE 's/^pgrx = "=?([^"]+)"$/\1/p' Cargo.toml)" --debug --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: float-group-keys
+          cache-all-crates: true
+          cache-on-failure: true
+      - name: PostgreSQL 18 and pg_search from main
+        run: |
+          cargo pgrx init --pg18=download --configure-flag=--without-readline
+          configs=("$HOME"/.pgrx/18.*/pgrx-install/bin/pg_config)
+          export PG_CONFIG="${configs[0]}"
+          echo "$(dirname "$PG_CONFIG")" >> "$GITHUB_PATH"
+          echo "shared_preload_libraries = 'pg_search'" >> "$HOME/.pgrx/data-18/postgresql.conf"
+          cargo pgrx install --package pg_search --pg-config "$PG_CONFIG" --no-default-features --features pg18
+          cargo pgrx start --package pg_search pg18
+          createdb -h localhost -p 28818 repro
+          psql -h localhost -p 28818 -d repro -X -c "CREATE EXTENSION pg_search"
+      - name: Run the repro
+        run: |
+          git rev-parse HEAD | tee repro.out
+          pg_config --version | tee -a repro.out
+          psql -h localhost -p 28818 -d repro -X -e -f bughunt/repro.sql 2>&1 | tee -a repro.out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: repro-main-pg18
+          path: repro.out
