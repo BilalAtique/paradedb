@@ -1,4 +1,4 @@
-# Fork-only check of float GROUP BY and filter bugs on main; not for upstream.
+# Fork-only check of Aggregate Scan and filter bugs on main; not for upstream.
 name: verify-float-group-keys
 on:
   push:

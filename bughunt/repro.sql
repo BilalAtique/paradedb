@@ -37,3 +37,25 @@ SELECT array_agg(id ORDER BY id) AS eq_zero FROM readings WHERE delta = 0;
 SELECT array_agg(id ORDER BY id) AS lt_zero FROM readings WHERE delta < 0;
 SELECT array_agg(id ORDER BY id) AS ge_zero FROM readings WHERE delta >= 0;
 RESET paradedb.enable_custom_scan;
+
+-- 4. MIN and MAX over bigint return a value that is not in the table above 2^53.
+DROP TABLE IF EXISTS events;
+CREATE TABLE events (id bigint PRIMARY KEY, body text, flag bool);
+INSERT INTO events VALUES (9007199254740993, 'a', true), (1, 'a', false), (-9007199254740993, 'a', NULL), (5, 'a', true);
+CREATE INDEX events_idx ON events USING paradedb (id, body, flag);
+SELECT max(id), min(id) FROM events WHERE body ||| 'a';
+SELECT max(id) = 9007199254740993 AS max_is_exact FROM events WHERE body ||| 'a';
+EXPLAIN (COSTS OFF) SELECT max(id), min(id) FROM events WHERE body ||| 'a';
+SET paradedb.enable_aggregate_custom_scan = off;
+SELECT max(id), min(id) FROM events WHERE body ||| 'a';
+RESET paradedb.enable_aggregate_custom_scan;
+
+-- 5. GROUP BY on a bool column puts the NULL group first under ORDER BY ... ASC (NULLS LAST).
+SELECT flag, count(*) FROM events WHERE body ||| 'a' GROUP BY flag ORDER BY flag;
+SELECT flag, count(*) FROM events WHERE body ||| 'a' GROUP BY flag ORDER BY flag DESC NULLS FIRST;
+SELECT flag, count(*) FROM events WHERE body ||| 'a' GROUP BY flag ORDER BY flag LIMIT 2;
+EXPLAIN (COSTS OFF) SELECT flag, count(*) FROM events WHERE body ||| 'a' GROUP BY flag ORDER BY flag LIMIT 2;
+SET paradedb.enable_aggregate_custom_scan = off;
+SELECT flag, count(*) FROM events WHERE body ||| 'a' GROUP BY flag ORDER BY flag;
+SELECT flag, count(*) FROM events WHERE body ||| 'a' GROUP BY flag ORDER BY flag LIMIT 2;
+RESET paradedb.enable_aggregate_custom_scan;
