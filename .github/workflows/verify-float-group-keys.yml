@@ -39,11 +39,14 @@ jobs:
           configs=("$HOME"/.pgrx/18.*/pgrx-install/bin/pg_config)
           export PG_CONFIG="${configs[0]}"
           echo "$(dirname "$PG_CONFIG")" >> "$GITHUB_PATH"
+          git clone -q --depth 1 --branch v0.8.6 https://github.com/pgvector/pgvector.git /tmp/pgvector
+          make -C /tmp/pgvector -j4 PG_CONFIG="$PG_CONFIG"
+          make -C /tmp/pgvector install PG_CONFIG="$PG_CONFIG"
           echo "shared_preload_libraries = 'pg_search'" >> "$HOME/.pgrx/data-18/postgresql.conf"
           cargo pgrx install --package pg_search --pg-config "$PG_CONFIG" --no-default-features --features pg18
           cargo pgrx start --package pg_search pg18
           createdb -h localhost -p 28818 repro
-          psql -h localhost -p 28818 -d repro -X -c "CREATE EXTENSION pg_search"
+          psql -h localhost -p 28818 -d repro -X -c "CREATE EXTENSION pg_search CASCADE"
       - name: Run the repro
         run: |
           git rev-parse HEAD | tee repro.out
