@@ -52,8 +52,11 @@ jobs:
           git rev-parse HEAD | tee repro.out
           pg_config --version | tee -a repro.out
           psql -h localhost -p 28818 -d repro -X -e -f bughunt/repro.sql 2>&1 | tee -a repro.out
+          psql -h localhost -p 28818 -d repro -X -e -f bughunt/issue.sql 2>&1 | tee issue.out
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: repro-main-pg18
-          path: repro.out
+          path: |
+            repro.out
+            issue.out
