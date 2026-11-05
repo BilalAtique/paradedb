@@ -2,7 +2,7 @@
 -- The workflow runs this file once with the custom scan on and once with it off,
 -- each in a fresh database, and diffs the two outputs.
 \set VERBOSITY terse
-CREATE EXTENSION IF NOT EXISTS pg_search;
+CREATE EXTENSION IF NOT EXISTS pg_search CASCADE;
 SET max_parallel_workers_per_gather = 0;
 
 -- Every table has its own index.
@@ -31,10 +31,16 @@ SELECT id, pdb.snippet(kind) FROM ip WHERE kind ||| 'apple' ORDER BY id;
 BEGIN;
 WITH u AS (UPDATE ip SET kind = kind || ' pie' WHERE kind ||| 'apple' RETURNING id, kind)
 SELECT id, kind FROM u ORDER BY id;
+SELECT tableoid::regclass AS tbl, id, kind FROM ip ORDER BY id;
 ROLLBACK;
 BEGIN;
 WITH d AS (DELETE FROM ip WHERE kind ||| 'apple' RETURNING id)
 SELECT id FROM d ORDER BY id;
+SELECT tableoid::regclass AS tbl, id, kind FROM ip ORDER BY id;
+ROLLBACK;
+BEGIN;
+DELETE FROM ip WHERE id @@@ paradedb.all();
+SELECT tableoid::regclass AS tbl, id, kind FROM ip ORDER BY id;
 ROLLBACK;
 
 -- A join with the parent.

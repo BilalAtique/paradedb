@@ -21,7 +21,7 @@ env:
   TEST: basescan_inheritance_parent
   EXPECTED: pg_search/tests/pg_regress/expected/basescan_inheritance_parent.out
   # true: pg_regress writes a new expected file. false: the committed file is checked.
-  REGENERATE: "true"
+  REGENERATE: "false"
 jobs:
   verify:
     name: Inheritance parent on PostgreSQL ${{ matrix.pg }}
@@ -75,14 +75,15 @@ jobs:
           make -C /tmp/pgvector -j2 PG_CONFIG="${configs[0]}"
           make -C /tmp/pgvector install PG_CONFIG="${configs[0]}"
           echo "shared_preload_libraries = 'pg_search'" >> "$HOME/.pgrx/data-${PGVER}/postgresql.conf"
-          "${configs[0]}" --configure | tr ' ' '\n' | grep -E "cassert|debug" || echo "no cassert flag found"
+          "${configs[0]}" --cflags | tr ' ' '\n' | grep -E "ASSERT" || echo "no assertion flag found"
+          "${configs[0]}" --configure | tr ' ' '\n' | grep -E "cassert" || echo "no cassert configure flag found"
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: basescan-inheritance-6640
           shared-key: pg${{ matrix.pg }}
           cache-all-crates: true
           cache-on-failure: true
-      - name: Exploration helper
+      - name: Helpers
         run: |
           cat > /tmp/explore.sh <<'SH'
           set -u
@@ -103,6 +104,18 @@ jobs:
           echo "rows on vs off ($label): diff exit $?"
           cat "explore-rows-${label}.diff"
           cat "explore-plans-${label}.out"
+          SH
+          cat > /tmp/neighbours.sh <<'SH'
+          set -u
+          label=$1
+          mkdir -p "neighbours-$label"
+          for t in $NEIGHBOURS; do
+            rm -f pg_search/tests/pg_regress/regression.diffs "pg_search/tests/pg_regress/results/$t.out"
+            cargo pgrx regress --package pg_search "pg${PGVER}" "$t" > "neighbours-$label/$t.log" 2>&1
+            sed -E 's/\x1b\[[0-9;]*m//g' "neighbours-$label/$t.log" | grep -E "^(PASS|FAIL|SKIP) $t " | tee -a "neighbours-$label.txt"
+            cp "pg_search/tests/pg_regress/results/$t.out" "neighbours-$label/$t.out" || echo "no results for $t"
+            cp pg_search/tests/pg_regress/regression.diffs "neighbours-$label/$t.diffs" 2>/dev/null || true
+          done
           SH
       - name: Baseline (origin/main BaseScan) - regression test
         run: |
@@ -126,11 +139,14 @@ jobs:
             echo '::error::The regression test passed without the fix'
             exit 1
           fi
-          cat without-fix-regress.log | tail -40
+          sed -E 's/\x1b\[[0-9;]*m//g' without-fix-regress.log | grep -E "^FAIL $TEST "
+          cp "pg_search/tests/pg_regress/results/$TEST.out" without-fix-output.out
           cp pg_search/tests/pg_regress/regression.diffs without-fix-regression.diffs
           cat without-fix-regression.diffs
       - name: Baseline - rows with the custom scan on and off
         run: bash /tmp/explore.sh baseline
+      - name: Baseline - neighbouring regression tests
+        run: bash /tmp/neighbours.sh baseline
       - name: Restore the fix
         run: |
           (cd pg_search && cargo pgrx stop "pg${PGVER}")
@@ -144,25 +160,29 @@ jobs:
           fi
           cargo pgrx regress --package pg_search --resetdb "pg${PGVER}" "$TEST" 2>&1 | tee -a regress.log
           sed -E 's/\x1b\[[0-9;]*m//g' regress.log | grep -E "^PASS $TEST "
-          cat "$EXPECTED"
+          git diff --exit-code -- "$EXPECTED"
+          cmp "$EXPECTED" "pg_search/tests/pg_regress/results/$TEST.out"
+          sha256sum "$EXPECTED" "pg_search/tests/pg_regress/results/$TEST.out" | tee expected-sha256.txt
           if [[ -f without-fix-output.out ]]; then
             diff -u without-fix-output.out "$EXPECTED" > baseline-vs-fix-output.diff || true
             cat baseline-vs-fix-output.diff
           fi
       - name: Fix - rows with the custom scan on and off
         run: bash /tmp/explore.sh fix
-      - name: Fix - neighbouring regression tests
+      - name: Fix - neighbouring regression tests, compared with the baseline
         run: |
-          status=0
-          for t in $NEIGHBOURS; do
-            cargo pgrx regress --package pg_search "pg${PGVER}" "$t" > "neighbour-$t.log" 2>&1 || status=1
-            sed -E 's/\x1b\[[0-9;]*m//g' "neighbour-$t.log" | grep -E '^(PASS|FAIL|SKIP) ' | tee -a neighbours.log || true
-            if [[ -f pg_search/tests/pg_regress/regression.diffs ]]; then
-              cp pg_search/tests/pg_regress/regression.diffs "neighbour-$t.diffs"
-              rm -f pg_search/tests/pg_regress/regression.diffs
-            fi
-          done
-          exit $status
+          bash /tmp/neighbours.sh fix
+          echo "== baseline"; cat neighbours-baseline.txt
+          echo "== fix"; cat neighbours-fix.txt
+          # The fix must not change any neighbour's output, on any version.
+          diff -r -x '*.log' -x '*.diffs' neighbours-baseline neighbours-fix | tee neighbours-baseline-vs-fix.diff
+          test ! -s neighbours-baseline-vs-fix.diff
+          diff <(awk '{print $1, $2}' neighbours-baseline.txt) <(awk '{print $1, $2}' neighbours-fix.txt)
+          # The expected files come from PostgreSQL 18, so every neighbour must also pass there.
+          if [[ "$PGVER" == "18" ]] && grep -E '^FAIL ' neighbours-fix.txt; then
+            echo '::error::A neighbouring regression test failed on PostgreSQL 18'
+            exit 1
+          fi
       - name: Clippy
         if: matrix.pg == 18
         run: cargo clippy --package pg_search --no-default-features --features pg18 --lib -- -D warnings --no-deps 2>&1 | tee clippy.log
@@ -175,9 +195,105 @@ jobs:
             *.out
             *.diff
             *.diffs
+            *.txt
+            neighbours-baseline/
+            neighbours-fix/
             pg_search/tests/pg_regress/expected/basescan_inheritance_parent.out
             pg_search/tests/pg_regress/results/basescan_inheritance_parent.out
             ~/.pgrx/${{ matrix.pg }}.log
+
+  release-build:
+    name: Release build of PostgreSQL 18 (PGDG packages)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      PGVER: "18"
+    steps:
+      - name: Free runner disk and add swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup
+          sudo docker image prune --all --force >/dev/null || true
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PGDG PostgreSQL 18 and build packages
+        run: |
+          sudo install -d -m 0755 /usr/share/keyrings
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo tee /usr/share/keyrings/postgresql.asc >/dev/null
+          echo "deb [signed-by=/usr/share/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends lsof build-essential clang lld pkg-config ca-certificates git \
+            libssl-dev libopenblas-dev libicu-dev \
+            postgresql-18 postgresql-server-dev-18 postgresql-18-pgvector
+          sudo systemctl stop postgresql || true
+          echo "PG_CONFIG=/usr/lib/postgresql/18/bin/pg_config" >> "$GITHUB_ENV"
+          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/pg_config --version
+          /usr/lib/postgresql/18/bin/pg_config --configure | tr ' ' '\n' | grep -E "cassert" || echo "release build: no --enable-cassert"
+      - name: Pinned Rust and cargo-pgrx
+        run: |
+          rustup show active-toolchain || rustup show
+          cargo install cargo-pgrx --version "$(sed -nE 's/^pgrx = "=?([^"]+)"$/\1/p' Cargo.toml)" --debug --locked
+          cargo pgrx init "--pg18=$PG_CONFIG"
+          echo "shared_preload_libraries = 'pg_search'" >> "$HOME/.pgrx/data-18/postgresql.conf"
+          sudo chown -R "$(whoami)" /var/run/postgresql/
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: basescan-inheritance-6640
+          shared-key: pg18-release
+          cache-all-crates: true
+          cache-on-failure: true
+      - name: Helper
+        run: |
+          cat > /tmp/explore.sh <<'SH'
+          set -u
+          label=$1
+          port="288${PGVER}"
+          (cd pg_search && cargo pgrx start "pg${PGVER}")
+          for mode in on off; do
+            db="explore_${label}_${mode}"
+            dropdb --if-exists -h localhost -p "$port" "$db"
+            createdb -h localhost -p "$port" "$db"
+            PGOPTIONS="-c paradedb.enable_custom_scan=${mode}" \
+              psql -X -h localhost -p "$port" -d "$db" -e -f .github/verify-6640/explore-rows.sql \
+              > "release-rows-${label}-${mode}.out" 2>&1
+          done
+          psql -X -h localhost -p "$port" -d "explore_${label}_on" -e -f .github/verify-6640/explore-plans.sql \
+            > "release-plans-${label}.out" 2>&1
+          diff -u "release-rows-${label}-on.out" "release-rows-${label}-off.out" > "release-rows-${label}.diff"
+          echo "rows on vs off ($label): diff exit $?"
+          cat "release-rows-${label}.diff"
+          SH
+      - name: Baseline (origin/main BaseScan)
+        run: |
+          for source in $FIXED_SOURCES; do
+            git show "$BASELINE":"$source" > "$source"
+          done
+          git diff --stat
+          (cd pg_search && cargo pgrx install --sudo --pg-config "$PG_CONFIG" --no-default-features --features pg18)
+          bash /tmp/explore.sh baseline
+      - name: Fix
+        run: |
+          (cd pg_search && cargo pgrx stop pg18)
+          git checkout HEAD -- $FIXED_SOURCES
+          git diff --exit-code HEAD -- pg_search/src
+          (cd pg_search && cargo pgrx install --sudo --pg-config "$PG_CONFIG" --no-default-features --features pg18)
+          bash /tmp/explore.sh fix
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-build-pg18
+          path: |
+            release-*.out
+            release-*.diff
+            ~/.pgrx/18.log
 
   full-suite:
     name: Full pg_regress suite on PostgreSQL 18
